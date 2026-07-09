@@ -1,0 +1,36 @@
+﻿# .NET
+backend/**/bin/
+backend/**/obj/
+*.user
+*.suo
+
+# Node / Vite (frontend)
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/coverage/
+frontend/test-results/
+frontend/playwright-report/
+
+# Variables de entorno (NUNCA se suben)
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+
+# Logs
+logs/
+*.log
+
+# IDE
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# Resultados de pruebas
+TestResults/
+coverage-report/
+coverage-results/

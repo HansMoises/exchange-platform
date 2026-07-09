@@ -1,0 +1,40 @@
+# .github/workflows/keep-alive-supabase.yml
+#
+# Evita que el proyecto Supabase (plan Free) se pause por inactividad,
+# haciendo un ping periódico al endpoint /health del backend desplegado
+# en Render. El plan Free de Supabase pausa el proyecto tras ~1 semana
+# sin actividad; este workflow lo previene ejecutándose antes de ese límite.
+#
+# Nota: el plan Free de Render suspende el servicio backend tras ~15 min
+# sin tráfico (cold start de 30-60s en la siguiente petición). Este ping
+# cada 3 días no elimina ese cold start, pero sirve para "despertar" el
+# backend con antelación si se ejecuta manualmente (workflow_dispatch)
+# poco antes de una demo o sustentación. Ver ADR-011 y Deployment.md §7.
+
+name: Keep-Alive Supabase
+
+on:
+  schedule:
+    # Cada 3 días a las 08:00 UTC (03:00 hora Perú aprox.)
+    - cron: "0 8 */3 * *"
+  workflow_dispatch: {}   # permite ejecutarlo manualmente desde GitHub Actions
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend /health en Render (mantiene activa la conexión a Supabase)
+        run: |
+          echo "Consultando ${{ secrets.BACKEND_HEALTH_URL }} ..."
+          response=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.BACKEND_HEALTH_URL }}")
+          echo "Código de respuesta: $response"
+          if [ "$response" -ne 200 ]; then
+            echo "::warning::El endpoint /health no respondió 200 (respondió $response). Revisar despliegue o proyecto Supabase."
+          fi
+
+      - name: (Opcional) Ping directo a Supabase REST si no hay backend desplegado
+        if: ${{ secrets.SUPABASE_URL != '' && secrets.SUPABASE_ANON_KEY != '' }}
+        run: |
+          curl -s -o /dev/null -w "Supabase REST responded: %{http_code}\n" \
+            "${{ secrets.SUPABASE_URL }}/rest/v1/" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"

@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="../src/ExchangePlatform.API/ExchangePlatform.API.csproj" />
+  <Project Path="../src/ExchangePlatform.Application/ExchangePlatform.Application.csproj" />
+  <Project Path="../src/ExchangePlatform.Domain/ExchangePlatform.Domain.csproj" />
+  <Project Path="../src/ExchangePlatform.Infrastructure/ExchangePlatform.Infrastructure.csproj" />
+  <Project Path="../tests/ExchangePlatform.IntegrationTests/ExchangePlatform.IntegrationTests.csproj" />
+  <Project Path="../tests/ExchangePlatform.UnitTests/ExchangePlatform.UnitTests.csproj" />
+</Solution>

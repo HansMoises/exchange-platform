@@ -1,0 +1,31 @@
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=YOUR_HOST;Port=5432;Database=exchange_platform;Username=YOUR_USER;Password=YOUR_PASSWORD"
+  },
+  "Jwt": {
+    "Secret": "REPLACE_WITH_A_RANDOM_SECRET_OF_AT_LEAST_32_CHARACTERS",
+    "Issuer": "exchange-platform",
+    "Audience": "exchange-platform-users",
+    "AccessTokenExpiryMinutes": "15",
+    "RefreshTokenExpiryDays": "7"
+  },
+  "AllowedOrigins": "http://localhost:5173",
+  "FrontendUrl": "http://localhost:5173",
+  "BackendUrl": "https://localhost:7149",
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "System": "Warning"
+      }
+    }
+  },
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*"
+}

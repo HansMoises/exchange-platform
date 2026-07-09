@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Primarios */
+  --color-primary: #2e5d34;
+  --color-primary-hover: #1f3f24;
+  --color-primary-soft: #dce8dd;
+
+  /* Secundarios */
+  --color-secondary: #6b7f3a;
+  --color-secondary-hover: #556630;
+
+  /* Tierra andina */
+  --color-earth: #a6764f;
+  --color-earth-soft: #c8a27c;
+
+  /* Neutros */
+  --color-bg: #ffffff;
+  --color-bg-alt: #f6f5f1;
+  --color-bg-warm: #ede7dd;
+  --color-text: #33332f;
+  --color-text-secondary: #66665f;
+
+  /* Estados */
+  --color-success: #2e7d4f;
+  --color-warning: #b8860b;
+  --color-error: #b23b3b;
+  --color-info: #2c6e91;
+
+  /* Radios y sombras */
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --shadow-card: 0 1px 2px rgba(51, 51, 47, 0.04), 0 2px 8px rgba(51, 51, 47, 0.06);
+
+  /* Tipografia */
+  --font-base: 'Inter', system-ui, sans-serif;
+  --font-display: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+}
+
+* {
+  scrollbar-color: var(--color-text-secondary) transparent;
+  scrollbar-width: thin;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  font-family: var(--font-base);
+  color: var(--color-text);
+  background-color: var(--color-bg);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--color-primary-soft);
+  color: var(--color-primary);
+}

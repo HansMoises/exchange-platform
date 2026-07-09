@@ -1,0 +1,30 @@
+# Build artifacts
+[Bb]in/
+[Oo]bj/
+[Oo]ut/
+TestResults/
+coverage-results/
+coverage-report/
+
+# Visual Studio
+.vs/
+*.user
+*.userosscache
+*.suo
+
+# Rider / VS Code
+.idea/
+.vscode/
+
+# Secrets locales (ver appsettings.json.example)
+**/appsettings.json
+**/appsettings.*.json
+!**/appsettings.Development.json
+
+# Logs
+*.log
+logs/
+
+# Contenido subido por usuarios en tiempo de ejecucion (no es codigo fuente)
+src/ExchangePlatform.API/wwwroot/uploads/*
+!src/ExchangePlatform.API/wwwroot/uploads/.gitkeep
