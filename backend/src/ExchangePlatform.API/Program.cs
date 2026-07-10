@@ -20,6 +20,12 @@ Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render (y otras plataformas cloud) inyectan el puerto via la variable PORT.
+// Si existe, la app escucha en ese puerto en todas las interfaces (0.0.0.0).
+var puerto = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(puerto))
+    builder.WebHost.UseUrls($"http://0.0.0.0:{puerto}");
+
 Log.Logger = new LoggerConfiguration()
     .ReadFrom.Configuration(builder.Configuration)
     .Enrich.FromLogContext()
@@ -127,7 +133,12 @@ if (app.Environment.IsDevelopment())
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "Exchange Platform v1"));
 }
 
-app.UseHttpsRedirection();
+// En produccion (Render) el HTTPS lo termina el proxy de la plataforma; dentro
+// del contenedor la app corre en HTTP. Redirigir aqui causaria bucles o fallos
+// en el healthcheck. Solo se aplica redireccion HTTPS en desarrollo local.
+if (app.Environment.IsDevelopment())
+    app.UseHttpsRedirection();
+
 app.UseStaticFiles();
 app.UseCors("AllowFrontend");
 app.UseAuthentication();
