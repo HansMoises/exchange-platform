@@ -5,6 +5,7 @@ using ExchangePlatform.Infrastructure.Extensions;
 using ExchangePlatform.Infrastructure.Persistence;
 using ExchangePlatform.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
@@ -123,6 +124,18 @@ builder.Services.AddCors(options =>
               .AllowAnyHeader()));
 
 var app = builder.Build();
+
+// Aplica automaticamente las migraciones pendientes al arrancar. En produccion
+// (Render) esto crea/actualiza el esquema en Supabase en cada despliegue, sin
+// el paso manual "dotnet ef database update" (ver Deployment.md seccion 4).
+// Las pruebas de integracion aplican sus propias migraciones contra su
+// contenedor Testcontainers, por eso lo desactivan con RunMigrationsAtStartup=false.
+if (app.Configuration.GetValue("RunMigrationsAtStartup", true))
+{
+    using var scope = app.Services.CreateScope();
+    var db = scope.ServiceProvider.GetRequiredService<ExchangePlatformDbContext>();
+    db.Database.Migrate();
+}
 
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 

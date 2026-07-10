@@ -44,6 +44,10 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
             config.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:DefaultConnection"] = _dbContainer.GetConnectionString(),
+                // Las migraciones se aplican en InitializeAsync (abajo) contra el
+                // contenedor; se desactiva el auto-migrate del arranque (Program.cs)
+                // para no aplicarlas dos veces ni acoplarse al orden de build del host.
+                ["RunMigrationsAtStartup"] = "false",
                 ["Jwt:Secret"] = "IntegrationTestsSecretKeyMustBeAtLeast32CharsLong!",
                 ["Jwt:Issuer"] = "exchange-platform",
                 ["Jwt:Audience"] = "exchange-platform-users",
