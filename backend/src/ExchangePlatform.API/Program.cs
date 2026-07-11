@@ -21,6 +21,30 @@ Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Validación temprana de configuración crítica. En producción appsettings.json
+// no viaja en la imagen (está gitignored): TODO viene de variables de entorno
+// de Render (formato Jwt__Secret, ConnectionStrings__DefaultConnection, etc.).
+// Sin esto, una variable faltante no se nota al desplegar sino recién cuando
+// un usuario ejerce el flujo que la usa (p. ej. login -> 500). Mejor fallar el
+// arranque con un mensaje accionable en los logs del deploy.
+var configCritica = new Dictionary<string, string?>
+{
+    ["ConnectionStrings:DefaultConnection"] = builder.Configuration.GetConnectionString("DefaultConnection"),
+    ["Jwt:Secret"] = builder.Configuration["Jwt:Secret"],
+    ["Jwt:Issuer"] = builder.Configuration["Jwt:Issuer"],
+    ["Jwt:Audience"] = builder.Configuration["Jwt:Audience"],
+};
+var faltantes = configCritica.Where(kv => string.IsNullOrWhiteSpace(kv.Value))
+                             .Select(kv => kv.Key)
+                             .ToList();
+if (faltantes.Count > 0)
+    throw new InvalidOperationException(
+        "Faltan variables de configuración críticas: " + string.Join(", ", faltantes) +
+        ". En Render defínelas como variables de entorno con '__' (p. ej. Jwt__Secret).");
+if (builder.Configuration["Jwt:Secret"]!.Length < 32)
+    throw new InvalidOperationException(
+        "Jwt:Secret debe tener al menos 32 caracteres.");
+
 // Render (y otras plataformas cloud) inyectan el puerto via la variable PORT.
 // Si existe, la app escucha en ese puerto en todas las interfaces (0.0.0.0).
 var puerto = Environment.GetEnvironmentVariable("PORT");

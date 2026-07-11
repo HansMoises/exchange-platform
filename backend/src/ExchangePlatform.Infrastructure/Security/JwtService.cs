@@ -14,6 +14,12 @@ public class JwtService : IJwtService
 {
     private readonly IConfiguration _config;
 
+    // Default seguro: en producción la config viene de variables de entorno
+    // (appsettings.json está gitignored y no viaja en la imagen de Render); si
+    // falta la opcional Jwt__AccessTokenExpiryMinutes el login no debe caerse
+    // con ArgumentNullException en int.Parse, sino usar este valor.
+    private const int ExpiryMinutesPorDefecto = 15;
+
     public JwtService(IConfiguration config)
     {
         _config = config;
@@ -34,12 +40,16 @@ public class JwtService : IJwtService
 
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
+        var expiraEnMinutos = int.TryParse(
+            _config["Jwt:AccessTokenExpiryMinutes"], out var minutos)
+                ? minutos
+                : ExpiryMinutesPorDefecto;
+
         var token = new JwtSecurityToken(
             issuer: _config["Jwt:Issuer"],
             audience: _config["Jwt:Audience"],
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(
-                int.Parse(_config["Jwt:AccessTokenExpiryMinutes"]!)),
+            expires: DateTime.UtcNow.AddMinutes(expiraEnMinutos),
             signingCredentials: creds);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
