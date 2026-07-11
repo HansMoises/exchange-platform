@@ -152,17 +152,25 @@ dotnet ef database update NombreMigracionAnterior --connection "<misma cadena>"
 
 ### 4.1 Resiliencia de la conexión (pool Npgsql)
 
-Supabase (y su pooler) cierran conexiones inactivas sin avisar al cliente. Un backend persistente que mantiene su propio pool Npgsql puede reutilizar una conexión ya muerta: la lectura se cuelga hasta el *Command Timeout* (~30 s) y devuelve **500 de forma intermitente** (síntoma observado: la misma consulta alternaba `200 500 200 500`). `AddInfrastructure` (Infrastructure) endurece el pool para evitarlo:
+Con el **pooler de Supabase (Supavisor)** delante hay dos pools compitiendo: el del lado cliente (Npgsql) reutiliza conexiones que el pooler ya recicló o cerró silenciosamente. Esa conexión queda "medio abierta": la primera consulta responde en ~50 ms y la siguiente, en la **misma conexión**, se cuelga en la lectura del socket hasta el *Command Timeout* y lanza:
+
+```
+Npgsql.NpgsqlException: Exception while reading from stream
+  ---> System.TimeoutException: Timeout during reading attempt
+```
+
+Síntomas observados: geo alternaba `200 500 200 500`; luego respuestas de ~18–33 s (el reintento enmascaraba el cuelgue); y el registro/login (varias consultas seguidas) fallaban con 500. **No** es inactividad: la conexión muere entre dos peticiones consecutivas, por eso `ConnectionIdleLifetime` no lo resuelve.
+
+**Fix (patrón "app detrás de un pooler"):** desactivar el pool del lado cliente y dejar que Supabase gestione las conexiones. `AddInfrastructure` configura:
 
 | Ajuste                     | Valor | Propósito                                                          |
 |----------------------------|-------|--------------------------------------------------------------------|
-| `ConnectionIdleLifetime`   | 5 s   | **Clave.** Cierra conexiones ociosas antes de que Supabase las mate, evitando reutilizar una muerta. |
-| `ConnectionPruningInterval`| 5 s   | Frecuencia de limpieza de conexiones ociosas.                      |
-| `KeepAlive` / `TcpKeepAlive` | 15 s / on | Sondea las conexiones activas y detecta/descarta las muertas. |
-| `Timeout` / `CommandTimeout` | 15 s / 15 s | Acotan la espera: si se cuelga, falla en ~15 s y reintenta.   |
-| `EnableRetryOnFailure`     | 3 reintentos | Reintenta errores transitorios en una conexión nueva.        |
+| `Pooling`                  | false | **Clave.** Sin pool cliente: cada petición abre una conexión fresca al pooler y nunca reutiliza una muerta. Supabase (Supavisor) hace el pooling real. |
+| `KeepAlive` / `TcpKeepAlive` | 15 s / on | Protege operaciones largas dentro de una misma conexión.       |
+| `Timeout` / `CommandTimeout` | 15 s / 30 s | Acotan la espera de apertura y de comando.                     |
+| `EnableRetryOnFailure`     | 3 reintentos | Red de seguridad ante errores transitorios.                   |
 
-Esto complementa —no reemplaza— el uso del **Session pooler (5432)** de la sección 2. Ambos juntos eliminan los 500 intermitentes.
+Requiere el **Session pooler (5432)** de la sección 2. Con el pooler externo gestionando las conexiones, el coste de abrir una conexión por petición es bajo y adecuado para el volumen de la plataforma.
 
 ---
 

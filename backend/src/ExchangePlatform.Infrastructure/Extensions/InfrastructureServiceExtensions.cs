@@ -20,27 +20,30 @@ public static class InfrastructureServiceExtensions
         // Motor de base de datos: PostgreSQL (Supabase en producción, ver ADR-010).
         var connectionString = configuration.GetConnectionString("DefaultConnection");
 
-        // Endurecimiento del pool para entornos gestionados (Supabase/pooler): el
-        // servidor cierra conexiones inactivas sin avisar; sin esto, Npgsql
-        // reutiliza conexiones muertas y la operación se cuelga hasta el Command
-        // Timeout -> 500/timeouts intermitentes (se veía como "200 500 200 500"
-        // y luego como respuestas de ~30s cuando el reintento las enmascaraba).
-        //   - ConnectionIdleLifetime BAJO (5s): descarta conexiones ociosas antes
-        //     de que Supabase las cierre, evitando reutilizar una muerta. Es la
-        //     clave del fix; 60s era demasiado alto frente al idle de Supabase.
-        //   - KeepAlive/TcpKeepAlive: sondea las conexiones activas y detecta muertas.
-        //   - Timeout/CommandTimeout acotados: si aun así se cuelga, falla en ~15s
-        //     y el reintento abre una conexión nueva (total de pocos segundos, no 60).
-        // NpgsqlConnectionStringBuilder respeta lo que ya venga en la cadena de
-        // conexión (host/usuario/password del ambiente) y solo añade estos ajustes.
+        // Detrás del pooler de Supabase (Supavisor) hay DOS pools compitiendo: el
+        // del lado cliente (Npgsql) reutiliza conexiones que el pooler ya recicló
+        // o cerró silenciosamente. Esa conexión queda "medio abierta": la primera
+        // query va bien (~50ms) y la siguiente, en la MISMA conexión, se cuelga en
+        // la lectura del socket hasta el CommandTimeout, lanzando
+        //   "Npgsql.NpgsqlException: Exception while reading from stream"
+        //   ---> "System.TimeoutException: Timeout during reading attempt".
+        // No es un problema de inactividad (la conexión muere entre dos peticiones
+        // seguidas), así que ConnectionIdleLifetime no lo resuelve.
+        //
+        // Patrón correcto "app detrás de un pooler": desactivar el pool del cliente
+        // (Pooling=false) y dejar que Supabase gestione las conexiones. Cada
+        // petición abre una conexión fresca al pooler (coste bajo) y nunca reutiliza
+        // una conexión muerta. KeepAlive protege operaciones largas dentro de una
+        // misma conexión; Timeout/CommandTimeout acotan la espera.
+        // NpgsqlConnectionStringBuilder respeta lo que ya venga en la cadena
+        // (host/usuario/password del ambiente) y solo añade estos ajustes.
         var csb = new NpgsqlConnectionStringBuilder(connectionString)
         {
-            KeepAlive = 15,
+            Pooling = false,
             TcpKeepAlive = true,
-            ConnectionIdleLifetime = 5,
-            ConnectionPruningInterval = 5,
+            KeepAlive = 15,
             Timeout = 15,
-            CommandTimeout = 15,
+            CommandTimeout = 30,
         };
 
         services.AddDbContext<ExchangePlatformDbContext>(options =>
