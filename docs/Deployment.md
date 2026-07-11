@@ -156,10 +156,10 @@ Supabase (y su pooler) cierran conexiones inactivas sin avisar al cliente. Un ba
 
 | Ajuste                     | Valor | Propósito                                                          |
 |----------------------------|-------|--------------------------------------------------------------------|
-| `KeepAlive` / `TcpKeepAlive` | 30 s / on | Sondea la conexión y detecta/descarta las muertas.             |
-| `ConnectionIdleLifetime`   | 60 s  | Cierra conexiones ociosas del pool antes de que el servidor las mate. |
-| `ConnectionPruningInterval`| 10 s  | Frecuencia de limpieza de conexiones ociosas.                      |
-| `Timeout` / `CommandTimeout` | 15 s / 30 s | Acotan la espera para fallar rápido en vez de colgarse.      |
+| `ConnectionIdleLifetime`   | 5 s   | **Clave.** Cierra conexiones ociosas antes de que Supabase las mate, evitando reutilizar una muerta. |
+| `ConnectionPruningInterval`| 5 s   | Frecuencia de limpieza de conexiones ociosas.                      |
+| `KeepAlive` / `TcpKeepAlive` | 15 s / on | Sondea las conexiones activas y detecta/descarta las muertas. |
+| `Timeout` / `CommandTimeout` | 15 s / 15 s | Acotan la espera: si se cuelga, falla en ~15 s y reintenta.   |
 | `EnableRetryOnFailure`     | 3 reintentos | Reintenta errores transitorios en una conexión nueva.        |
 
 Esto complementa —no reemplaza— el uso del **Session pooler (5432)** de la sección 2. Ambos juntos eliminan los 500 intermitentes.

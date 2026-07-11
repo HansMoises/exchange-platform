@@ -22,21 +22,25 @@ public static class InfrastructureServiceExtensions
 
         // Endurecimiento del pool para entornos gestionados (Supabase/pooler): el
         // servidor cierra conexiones inactivas sin avisar; sin esto, Npgsql
-        // reutiliza conexiones muertas y la lectura se cuelga hasta el Command
-        // Timeout (~30s) -> 500 intermitentes (se veía como "200 500 200 500").
-        //   - KeepAlive/TcpKeepAlive: sondea la conexión y detecta las muertas.
-        //   - ConnectionIdleLifetime: cierra las ociosas del pool antes que el servidor.
-        //   - Timeout/CommandTimeout: acotan el tiempo de espera para fallar rápido.
+        // reutiliza conexiones muertas y la operación se cuelga hasta el Command
+        // Timeout -> 500/timeouts intermitentes (se veía como "200 500 200 500"
+        // y luego como respuestas de ~30s cuando el reintento las enmascaraba).
+        //   - ConnectionIdleLifetime BAJO (5s): descarta conexiones ociosas antes
+        //     de que Supabase las cierre, evitando reutilizar una muerta. Es la
+        //     clave del fix; 60s era demasiado alto frente al idle de Supabase.
+        //   - KeepAlive/TcpKeepAlive: sondea las conexiones activas y detecta muertas.
+        //   - Timeout/CommandTimeout acotados: si aun así se cuelga, falla en ~15s
+        //     y el reintento abre una conexión nueva (total de pocos segundos, no 60).
         // NpgsqlConnectionStringBuilder respeta lo que ya venga en la cadena de
         // conexión (host/usuario/password del ambiente) y solo añade estos ajustes.
         var csb = new NpgsqlConnectionStringBuilder(connectionString)
         {
-            KeepAlive = 30,
+            KeepAlive = 15,
             TcpKeepAlive = true,
-            ConnectionIdleLifetime = 60,
-            ConnectionPruningInterval = 10,
+            ConnectionIdleLifetime = 5,
+            ConnectionPruningInterval = 5,
             Timeout = 15,
-            CommandTimeout = 30,
+            CommandTimeout = 15,
         };
 
         services.AddDbContext<ExchangePlatformDbContext>(options =>
