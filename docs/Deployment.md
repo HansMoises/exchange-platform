@@ -3,7 +3,7 @@
 
 > **Documento:** Estrategia de Despliegue
 > **Fase SDLC:** 2 (Diseño) — documento de proceso / DevOps; base para Fase 5
-> **Versión:** 1.3.0
+> **Versión:** 1.4.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
 > **Fecha:** 2026-07-10
 > **Autor:** Equipo Enterprise Senior (Especialista DevOps / Arquitecto)
@@ -20,6 +20,7 @@
 | 1.1.0   | 2026-07-08 | Equipo Enterprise Senior | Adaptado a Supabase (PostgreSQL gestionado) en lugar de SQL Server en contenedor propio. Ver ADR-010 en `Arquitectura.md`. |
 | 1.2.0   | 2026-07-09 | Equipo Enterprise Senior | Despliegue movido de VPS Hostinger (Docker Compose) a **Vercel (frontend) + Render (backend)**. Ver ADR-011 en `Arquitectura.md`. Procedimiento de despliegue, migraciones y rollback actualizados a los mecanismos nativos de cada plataforma. |
 | 1.3.0   | 2026-07-10 | Equipo Enterprise Senior | Migraciones ahora se aplican **automáticamente al arrancar el backend** (`Program.cs`, flag `RunMigrationsAtStartup`), eliminando el paso manual como prerrequisito. Sección 4 actualizada. |
+| 1.4.0   | 2026-07-10 | Equipo Enterprise Senior | Conexión a Supabase: se recomienda el **Session pooler (5432)** para el backend persistente y se documenta el **endurecimiento del pool Npgsql** (KeepAlive, ConnectionIdleLifetime, reintentos) que corrige 500 intermitentes por conexiones muertas reutilizadas. Prerrequisitos y sección 4 actualizados. |
 
 ---
 
@@ -61,7 +62,9 @@ Antes de cualquier despliegue:
 □ Pipeline CI/CD en verde (build, tests, cobertura >= 90%, seguridad).
 □ Versión etiquetada (SemVer) en caso de Producción.
 □ Variables de entorno del ambiente configuradas en Vercel y Render (dashboards de cada plataforma / GitHub Secrets para CI), incluido el
-  CONNECTION_STRING del pooler de Supabase correspondiente al ambiente.
+  CONNECTION_STRING de Supabase correspondiente al ambiente. Para el backend persistente usar el **Session pooler (puerto 5432)**, NO el
+  Transaction pooler (6543): este último rota conexiones entre clientes y provoca 500 intermitentes con un servicio ASP.NET Core que
+  mantiene su propio pool Npgsql.
 □ Proyecto Supabase del ambiente activo (no pausado por inactividad).
 □ Servicio de Render del ambiente activo (no dormido — ver §7 y `keep-alive-supabase.yml` en CICD.md).
 □ Backup reciente de la base de datos (en Staging/Producción).
@@ -146,6 +149,20 @@ dotnet ef database update NombreMigracionAnterior --connection "<misma cadena>"
 ```
 
 > El auto-migrate corre dentro del mismo contenedor del backend, con las mismas variables de entorno ya configuradas en Render — no expone credenciales adicionales. Como `Migrate()` es idempotente, arrancar varias veces no reaplica migraciones ya presentes.
+
+### 4.1 Resiliencia de la conexión (pool Npgsql)
+
+Supabase (y su pooler) cierran conexiones inactivas sin avisar al cliente. Un backend persistente que mantiene su propio pool Npgsql puede reutilizar una conexión ya muerta: la lectura se cuelga hasta el *Command Timeout* (~30 s) y devuelve **500 de forma intermitente** (síntoma observado: la misma consulta alternaba `200 500 200 500`). `AddInfrastructure` (Infrastructure) endurece el pool para evitarlo:
+
+| Ajuste                     | Valor | Propósito                                                          |
+|----------------------------|-------|--------------------------------------------------------------------|
+| `KeepAlive` / `TcpKeepAlive` | 30 s / on | Sondea la conexión y detecta/descarta las muertas.             |
+| `ConnectionIdleLifetime`   | 60 s  | Cierra conexiones ociosas del pool antes de que el servidor las mate. |
+| `ConnectionPruningInterval`| 10 s  | Frecuencia de limpieza de conexiones ociosas.                      |
+| `Timeout` / `CommandTimeout` | 15 s / 30 s | Acotan la espera para fallar rápido en vez de colgarse.      |
+| `EnableRetryOnFailure`     | 3 reintentos | Reintenta errores transitorios en una conexión nueva.        |
+
+Esto complementa —no reemplaza— el uso del **Session pooler (5432)** de la sección 2. Ambos juntos eliminan los 500 intermitentes.
 
 ---
 
