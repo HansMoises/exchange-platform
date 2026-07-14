@@ -3,9 +3,9 @@
 
 > **Documento:** Contenedorización (Docker)
 > **Fase SDLC:** 2 (Diseño) — documento de proceso / DevOps
-> **Versión:** 1.2.0
+> **Versión:** 1.3.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-07-09
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise Senior (Especialista DevOps / Arquitecto)
 > **Documentos padre:** Arquitectura.md | BD.md | Seguridad.md
 > **Convenciones:** Documentación en español. Diagramas en ASCII.
@@ -19,6 +19,7 @@
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
 | 1.1.0   | 2026-07-08 | Equipo Enterprise Senior | Se elimina el contenedor `db` (SQL Server). La base de datos pasa a ser Supabase (PostgreSQL gestionado externo). Ver ADR-010 en `Arquitectura.md`. |
 | 1.2.0   | 2026-07-09 | Equipo Enterprise Senior | Docker Compose deja de usarse para desplegar en Staging/Producción (ahora Vercel + Render, ver ADR-011 en `Arquitectura.md`) y se conserva **solo para desarrollo local**. Se elimina el contenedor `proxy` (Nginx). El Dockerfile del backend se mantiene sin cambios — es el que consume Render para construir el servicio. |
+| 1.3.0   | 2026-07-13 | Equipo Enterprise Senior | **Se revierte parcialmente el principio "BD fuera de Docker"** (ver ADR-012 en `Arquitectura.md`). Se documentan los **dos contenedores PostgreSQL** que ya operan: `exchange-dev-db` (`:5432`, desarrollo local) y `exchange-db-test` (`:5433`, suite E2E, definido en `docker-compose.test.yml`). Supabase queda restringido al ambiente de **Producción**. La BD de test pasa a ser **efímera (`tmpfs`)** — corrige el defecto DEF-01 / PR-097 de `Testing.md` (acumulación de datos entre ejecuciones). |
 
 ---
 
@@ -43,7 +44,7 @@
 |----------------------------|-------------------------------------------------------------|
 | Alcance de Docker           | **Solo desarrollo local** (Docker Compose). En Staging/Producción, el frontend se despliega en Vercel (sin Docker) y el backend en Render (usando este mismo Dockerfile) — ver ADR-011. |
 | Un servicio por contenedor | Frontend y Backend en contenedores separados (desarrollo local). |
-| Base de datos gestionada   | PostgreSQL corre en Supabase (servicio externo, fuera de Docker Compose). |
+| Base de datos por ambiente | **Aislamiento en tres niveles (ADR-012):** Producción → Supabase (externo, fuera de Docker) · Desarrollo → contenedor `exchange-dev-db` (`localhost:5432`) · Test → contenedor `exchange-db-test` (`localhost:5433`, efímero). Ningún proceso local escribe en Supabase. |
 | Imágenes ligeras           | Multi-stage builds; imágenes runtime mínimas.               |
 | Reproducibilidad           | Misma imagen de backend en Dev local, Testing (CI) y Render (Staging/Prod). |
 | Configuración externa      | Variables de entorno por ambiente (sin secretos en imagen). |
@@ -57,25 +58,53 @@
 ### 2.1 Desarrollo Local (Docker Compose)
 
 ```
-┌────────────────────────────────────────────────────────────────┐
-│                Docker Compose (máquina local del dev)          │
-│                                                                │
-│  ┌──────────────┐              ┌──────────────────┐             │
-│  │   frontend   │              │     backend      │             │
-│  │ (Nginx+SPA)  │              │  (ASP.NET Core)  │             │
-│  │   :3000      │              │     :5000        │             │
-│  └──────────────┘              └────────┬─────────┘             │
-│                                          │                       │
-│  Red: exchange-network     Volumen: logs-data                   │
-└──────────────────────────────────────────┼───────────────────────┘
-                                            │ TLS :5432 (pooler)
-                                            ▼
-                              ┌───────────────────────────────┐
-                              │   Supabase (servicio externo) │
-                              │   PostgreSQL 15+ gestionado   │
-                              │   Connection Pooler (PgBouncer)│
-                              └───────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────┐
+│                   Docker (máquina local del dev)                     │
+│                                                                      │
+│  ┌──────────────┐        ┌──────────────────┐                        │
+│  │   frontend   │        │     backend      │                        │
+│  │ (Nginx+SPA)  │───────►│  (ASP.NET Core)  │                        │
+│  │   :3000      │        │     :5000        │                        │
+│  └──────────────┘        └────────┬─────────┘                        │
+│                                   │                                  │
+│                                   │ ConnectionStrings__              │
+│                                   │ DefaultConnection                │
+│                                   ▼                                  │
+│                          ┌─────────────────────┐                     │
+│                          │  exchange-dev-db    │  ◄── N2 DESARROLLO  │
+│                          │  postgres:15-alpine │                     │
+│                          │  :5432 (persistente)│                     │
+│                          │  DB: exchange_platform                    │
+│                          └─────────────────────┘                     │
+│                                                                      │
+│  Red: exchange-network          Volumen: logs-data, pgdata-dev       │
+└──────────────────────────────────────────────────────────────────────┘
+
+        ┌──────────────────────────────────────────────────┐
+        │              docker-compose.test.yml             │
+        │        (se levanta SOLO durante el E2E)          │
+        │                                                  │
+        │            ┌─────────────────────┐               │
+        │            │  exchange-db-test   │ ◄── N3 TEST   │
+        │            │  postgres:15-alpine │               │
+        │            │  :5433  (tmpfs/RAM) │               │
+        │            │  DB: exchange_test  │               │
+        │            └─────────────────────┘               │
+        │            Se destruye al terminar la suite.     │
+        └──────────────────────────────────────────────────┘
+
+                            ✗  NUNCA
+                            ✗
+        ┌───────────────────────────────┐
+        │   Supabase (servicio externo) │  ◄── N1 PRODUCCIÓN
+        │   PostgreSQL 15+ gestionado   │      ⛔ Ningún proceso local
+        │   Pooler :6543 (PgBouncer)    │         se conecta aquí.
+        └───────────────────────────────┘
 ```
+
+> **Cambio respecto a v1.2.0 (ADR-012):** en desarrollo local el backend **ya no se conecta a
+> Supabase**, sino al contenedor `exchange-dev-db`. Supabase queda reservado exclusivamente
+> para el ambiente de Producción (Vercel + Render, §2.2).
 
 ### 2.2 Staging / Producción (Vercel + Render — sin Docker Compose)
 
@@ -185,6 +214,25 @@ server {
 # docker-compose.yml (base — desarrollo local)
 services:
 
+  db:
+    image: postgres:15-alpine
+    container_name: exchange-dev-db
+    environment:
+      POSTGRES_USER: ${DEV_DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DEV_DB_NAME:-exchange_platform}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata-dev:/var/lib/postgresql/data    # persistente: los datos de dev sobreviven
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d exchange_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - exchange-network
+
   backend:
     build:
       context: ./backend
@@ -192,10 +240,14 @@ services:
     container_name: exchange-backend
     environment:
       ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT}
-      CONNECTION_STRING: ${CONNECTION_STRING}   # apunta al pooler de Supabase
-      JWT_SECRET: ${JWT_SECRET}
+      # ADR-012: en desarrollo apunta al contenedor `db`, NO a Supabase.
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=exchange_platform;Username=postgres;Password=${DEV_DB_PASSWORD:-postgres}"
+      Jwt__Secret: ${JWT_SECRET}
     ports:
       - "5000:5000"
+    depends_on:
+      db:
+        condition: service_healthy
     networks:
       - exchange-network
     volumes:
@@ -219,24 +271,133 @@ networks:
 
 volumes:
   logs-data:
+  pgdata-dev:
 ```
 
-> **Sin servicio `db`:** la base de datos vive en Supabase, fuera de este `docker-compose.yml`. El backend se conecta directamente por `CONNECTION_STRING` a la URL del pooler de Supabase. Ya no hay `depends_on: db` ni healthcheck local de base de datos — la disponibilidad de la BD se verifica a través del propio healthcheck del backend (sección 8).
+> **Con servicio `db` (cambio v1.3.0 — ADR-012):** a diferencia de la versión anterior de este
+> documento, el compose de desarrollo **sí incluye** un contenedor PostgreSQL (`exchange-dev-db`).
+> El backend local se conecta a él, **no a Supabase**. El motivo: el desarrollo diario escribía
+> usuarios, objetos e intercambios de prueba directamente en la base de datos de producción,
+> contaminando los listados y los indicadores del panel de administración (RF-111) que se
+> exhibirán en la sustentación. Supabase queda reservado exclusivamente para Producción.
 
-### 5.1 Overrides Disponibles
+---
 
-| Archivo                          | Uso                                                                |
-|----------------------------------|---------------------------------------------------------------------|
-| docker-compose.yml               | Base común (desarrollo local).                                      |
-| docker-compose.override.yml      | Development (hot reload, Swagger, debug) — se aplica automáticamente. |
+## 5.2 `docker-compose.test.yml` — Base de datos efímera para E2E
+
+> **Nivel 3 de ADR-012.** Contenedor exclusivo de la suite E2E de Playwright (`Testing.md` §13).
+> Se levanta al inicio de la ejecución y se destruye al terminar.
+
+```yaml
+# docker-compose.test.yml
+# Base de datos EFÍMERA para la suite E2E (Playwright).
+# Nivel 3 de ADR-012 — Arquitectura.md
+#
+# ⚠️ SIN VOLUMEN PERSISTENTE, POR DISEÑO.
+#    Cada ejecución arranca con una BD limpia. Esto garantiza pruebas
+#    deterministas y elimina la acumulación de datos entre corridas
+#    (defecto DEF-01 / PR-097 en Testing.md).
+
+services:
+
+  db-test:
+    image: postgres:15-alpine
+    container_name: exchange-db-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${TEST_DB_PASSWORD:-TestE2E2026}
+      POSTGRES_DB: exchange_test
+    ports:
+      - "5433:5432"          # host 5433 → contenedor 5432 (evita choque con dev)
+    tmpfs:
+      - /var/lib/postgresql/data   # datos en RAM: se evaporan al detener el contenedor
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d exchange_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+    networks:
+      - exchange-test-network
+
+networks:
+  exchange-test-network:
+    driver: bridge
+
+# SIN sección `volumes:` — deliberadamente.
+```
+
+### 5.2.1 Por qué `tmpfs` y no un volumen
+
+| Estrategia                   | Datos entre ejecuciones | Velocidad | DEF-01     |
+|------------------------------|-------------------------|-----------|------------|
+| Volumen nombrado (v1.2.0)    | ❌ Persisten            | Normal    | **Falla**  |
+| Sin volumen                  | ✅ Se borran al `down`  | Normal    | Resuelto   |
+| **`tmpfs`** *(adoptado)*     | ✅ Imposible persistir  | **Mayor** | Resuelto   |
+
+`tmpfs` monta el directorio de datos de PostgreSQL en **memoria RAM**. Los datos no pueden
+sobrevivir a la detención del contenedor — no es una convención, es una imposibilidad física.
+Beneficio secundario: se elimina la E/S a disco, reduciendo el tiempo de la suite E2E.
+
+> **Origen del defecto DEF-01:** el volumen `exchange-platform_pgdata-test` conservaba los
+> objetos creados en cada corrida. Tras 20 ejecuciones, la aserción `toHaveCount(1)` de
+> `search.spec.ts` recibía `20`. El síntoma (`Expected: 1, Received: 20`) era literalmente el
+> contador de ejecuciones acumuladas.
+
+### 5.2.2 Migración desde la configuración anterior
+
+El volumen persistente ya existe en disco y **debe destruirse una sola vez**:
+
+```powershell
+# Destruye contenedor Y volumen (la bandera -v es indispensable)
+docker compose -f docker-compose.test.yml down -v
+```
+
+> `docker compose down` sin `-v` detiene el contenedor pero **conserva** el volumen. Es esa
+> bandera la que separa el defecto de su solución.
+
+### 5.2.3 Tabla comparativa de los dos contenedores
+
+| Parámetro           | `exchange-dev-db` (N2)   | `exchange-db-test` (N3) |
+|---------------------|--------------------------|--------------------------|
+| Archivo compose     | `docker-compose.yml`     | `docker-compose.test.yml`|
+| Imagen              | `postgres:15-alpine`     | `postgres:15-alpine`     |
+| Puerto host         | `5432`                   | `5433`                   |
+| Base de datos       | `exchange_platform`      | `exchange_test`          |
+| Usuario             | `postgres`               | `postgres`               |
+| Almacenamiento      | Volumen `pgdata-dev`     | **`tmpfs` (RAM)**        |
+| Persistencia        | Sí                       | **No** (por diseño)      |
+| Ciclo de vida       | Permanente               | Por ejecución de la suite|
+| Consumidor          | `dotnet run` local       | Playwright (`start-e2e.ps1`) |
+
+> **Doble capa de defensa:** además del puerto distinto, el **nombre de la base de datos difiere**
+> (`exchange_platform` vs `exchange_test`). Si por error se apunta al puerto equivocado, la base
+> de datos de destino no coincide y el fallo es inmediato y visible, en lugar de silencioso.
+
+### 5.3 Archivos Compose Disponibles
+
+| Archivo                     | Ambiente        | Contenedores                              | Se aplica            |
+|-----------------------------|-----------------|-------------------------------------------|----------------------|
+| `docker-compose.yml`        | Desarrollo (N2) | `frontend`, `backend`, `db` (`:5432`)     | `docker compose up`  |
+| `docker-compose.override.yml` | Desarrollo    | Hot reload, Swagger, debug                 | Automático           |
+| `docker-compose.test.yml`   | **Test (N3)**   | `db-test` (`:5433`, efímero)              | `start-e2e.ps1` / `-f` |
 
 > Los antiguos `docker-compose.staging.yml` y `docker-compose.prod.yml` se retiran: Staging y Producción ya no se orquestan con Docker Compose. La configuración de esos ambientes vive en los dashboards de Vercel/Render y en GitHub Secrets (Deployment.md §2, §8.4 de Arquitectura.md).
 
-Ejecución (desarrollo local):
+Ejecución:
 
-```
+```powershell
+# Desarrollo local (N2) — frontend + backend + BD de desarrollo
 docker compose up -d
+
+# Suite E2E (N3) — solo la BD de test, efímera
+docker compose -f docker-compose.test.yml up -d
+
+# Destruir la BD de test al terminar (-v elimina cualquier volumen residual)
+docker compose -f docker-compose.test.yml down -v
 ```
+
+> En la práctica, el ciclo de vida del contenedor de test lo gestiona el script
+> `start-e2e.ps1` (ver `Testing.md` §13). No es necesario invocarlo manualmente.
 
 ---
 

@@ -12,6 +12,11 @@
   "AllowedOrigins": "http://localhost:5173",
   "FrontendUrl": "http://localhost:5173",
   "BackendUrl": "https://localhost:7149",
+  "Supabase": {
+    "Url": "",
+    "ServiceKey": "",
+    "Bucket": "uploads"
+  },
   "Serilog": {
     "MinimumLevel": {
       "Default": "Information",

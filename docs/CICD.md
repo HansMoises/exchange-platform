@@ -3,9 +3,9 @@
 
 > **Documento:** Integración y Entrega Continua (CI/CD)
 > **Fase SDLC:** 2 (Diseño) — documento de proceso / DevOps
-> **Versión:** 1.2.0
+> **Versión:** 1.3.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-07-09
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise Senior (Especialista DevOps / QA)
 > **Documentos padre:** GitFlow.md | Docker.md | Testing.md | Seguridad.md
 > **Convenciones:** Documentación en español. Diagramas en ASCII. Herramienta: GitHub Actions.
@@ -19,6 +19,7 @@
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
 | 1.1.0   | 2026-07-08 | Equipo Enterprise Senior | Gestión de secretos y despliegue adaptados a Supabase (PostgreSQL gestionado) en lugar de SQL Server propio. Se agrega workflow `keep-alive-supabase.yml` para evitar la pausa del proyecto Supabase (plan Free) por inactividad. Ver ADR-010 en `Arquitectura.md`. |
 | 1.2.0   | 2026-07-09 | Equipo Enterprise Senior | Etapa de Deploy adaptada a Vercel + Render (integración nativa con GitHub, sin `docker compose up` por SSH). Ver ADR-011 en `Arquitectura.md`. Workflow `cd-prod.yml` simplificado (ya no construye/despliega imágenes manualmente); gestión de secretos actualizada. |
+| 1.3.0   | 2026-07-13 | Equipo Enterprise Senior | Se incorpora la **etapa 3 — E2E (Playwright)** al pipeline, entre Test y Quality. El pipeline pasa de 6 a 7 etapas. Nuevo quality gate: *suite E2E en verde*. Se documenta el levantamiento de la BD de test (`exchange-db-test`, ADR-012) mediante `services:` de GitHub Actions. Ver `Testing.md` v1.2.0 y `Docker.md` v1.3.0. |
 
 ---
 
@@ -67,21 +68,35 @@ Herramienta: **GitHub Actions**. Los workflows viven en `.github/workflows/`.
 ## 3. Etapas del Pipeline
 
 ```
-   ┌─────────┐   ┌─────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌─────────┐
-   │ 1.BUILD │──►│ 2.TEST  │──►│3.QUALITY │──►│4.SECURITY│──►│5.DOCKER  │──►│6.DEPLOY │
-   └─────────┘   └─────────┘   └──────────┘   └──────────┘   └──────────┘   └─────────┘
-   compila      unitarias +   cobertura      escaneo de    construye      despliega
-   back+front   integración   >= 90%         dependencias  imágenes       al ambiente
+  ┌─────────┐  ┌─────────┐  ┌────────┐  ┌──────────┐  ┌──────────┐  ┌────────┐  ┌─────────┐
+  │ 1.BUILD │─►│ 2.TEST  │─►│ 3.E2E  │─►│4.QUALITY │─►│5.SECURITY│─►│6.DOCKER│─►│7.DEPLOY │
+  └─────────┘  └─────────┘  └────────┘  └──────────┘  └──────────┘  └────────┘  └─────────┘
+   compila     unitarias +  Playwright   cobertura     escaneo de   construye   despliega
+   back+front  integración  13 specs     >= 90%        dependencias  imágenes    al ambiente
+                                │
+                                ▼
+                    ┌───────────────────────┐
+                    │  exchange-db-test     │  ← BD efímera (ADR-012)
+                    │  postgres:15-alpine   │    levantada por el runner
+                    │  :5433 (tmpfs)        │    y destruida al terminar
+                    └───────────────────────┘
 ```
 
 | Etapa       | Acción                                                        | Falla si...                       |
 |-------------|---------------------------------------------------------------|-----------------------------------|
 | 1. Build    | dotnet build + npm run build                                  | No compila.                       |
 | 2. Test     | dotnet test (xUnit) + vitest                                  | Alguna prueba falla.              |
-| 3. Quality  | Cobertura (Coverlet/Vitest)                                   | Cobertura < 90%.                  |
-| 4. Security | Escaneo de dependencias (Dependabot / audit)                  | Vulnerabilidad crítica.           |
-| 5. Docker   | docker build backend (imagen validada; Render construye la suya propia al detectar el push) | La imagen no construye.           |
-| 6. Deploy   | Vercel y Render despliegan automáticamente al detectar el push (sin paso manual)              | El despliegue o smoke test falla. |
+| **3. E2E**  | **Levanta BD de test (`:5433`) → migra → arranca back+front → `npx playwright test` (13 specs)** | **Alguna prueba E2E falla.**  |
+| 4. Quality  | Cobertura (Coverlet/Vitest)                                   | Cobertura < 90%.                  |
+| 5. Security | Escaneo de dependencias (Dependabot / audit)                  | Vulnerabilidad crítica.           |
+| 6. Docker   | docker build backend (imagen validada; Render construye la suya propia al detectar el push) | La imagen no construye.           |
+| 7. Deploy   | Vercel y Render despliegan automáticamente al detectar el push (sin paso manual)              | El despliegue o smoke test falla. |
+
+> **Aislamiento en CI (ADR-012):** la etapa E2E **nunca** se conecta a Supabase. GitHub Actions
+> levanta un contenedor `postgres:15-alpine` efímero mediante la directiva `services:`, equivalente
+> al `exchange-db-test` local. La variable `ConnectionStrings__DefaultConnection` se fija de forma
+> explícita antes de ejecutar las migraciones (ver la trampa del `DesignTimeDbContextFactory` en
+> `Testing.md` §12.1).
 
 ---
 
@@ -91,8 +106,8 @@ Coherente con `GitFlow.md`.
 
 | Evento                       | Workflow      | Etapas ejecutadas                 | Despliegue   |
 |------------------------------|---------------|-----------------------------------|--------------|
-| Push a feature/*             | ci.yml        | Build + Test                      | —            |
-| Pull Request → develop       | ci.yml        | Build + Test + Quality + Security | —            |
+| Push a feature/*             | ci.yml        | Build + Test                            | —            |
+| Pull Request → develop       | ci.yml        | Build + Test + **E2E** + Quality + Security | —        |
 | Merge a develop              | cd-staging.yml| Todas                             | Staging      |
 | Push de tag vX.Y.Z en main   | cd-prod.yml   | Todas                             | Production   |
 
@@ -106,6 +121,7 @@ El pipeline **se detiene** si no se cumple un gate:
 |----------------------|----------------------------------|---------------------|
 | Build                | Compilación exitosa back + front | —                   |
 | Pruebas              | 100% de pruebas pasan            | Testing.md          |
+| **Pruebas E2E**      | **13/13 specs en verde**         | **Testing.md PR-090..PR-102** |
 | Cobertura            | ≥ 90% global                     | Testing.md PR-080   |
 | Seguridad            | Sin vulnerabilidades críticas    | Seguridad.md PR-081 |
 | Revisión de código   | PR aprobado (mín. 1 revisor)     | GitFlow.md          |
@@ -159,9 +175,59 @@ jobs:
       - name: Test
         run: npm run test --prefix ./frontend
 
-  security:
+  e2e:
     runs-on: ubuntu-latest
     needs: [ backend, frontend ]
+    # ADR-012 — BD de test efímera. NUNCA se conecta a Supabase.
+    services:
+      db-test:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ${{ secrets.TEST_DB_PASSWORD }}
+          POSTGRES_DB: exchange_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d exchange_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      # ⚠️ OBLIGATORIO: sin esta variable, EF Core cae silenciosamente al puerto 5432.
+      ConnectionStrings__DefaultConnection: "Host=localhost;Port=5433;Database=exchange_test;Username=postgres;Password=${{ secrets.TEST_DB_PASSWORD }}"
+      Jwt__Secret: ${{ secrets.JWT_SECRET_TEST }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Aplicar migraciones sobre la BD de test
+        run: dotnet ef database update --project ./backend/ExchangePlatform.Infrastructure --startup-project ./backend/ExchangePlatform.API
+      - name: Arrancar backend (background)
+        run: dotnet run --project ./backend/ExchangePlatform.API &
+      - name: Install frontend + Playwright
+        run: |
+          npm ci --prefix ./frontend
+          npx --prefix ./frontend playwright install --with-deps chromium
+      - name: Ejecutar suite E2E
+        run: npm run test:e2e --prefix ./frontend
+      - name: Publicar informe de Playwright
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7
+
+  security:
+    runs-on: ubuntu-latest
+    needs: [ backend, frontend, e2e ]
     steps:
       - uses: actions/checkout@v4
       - name: Audit dependencias (npm)

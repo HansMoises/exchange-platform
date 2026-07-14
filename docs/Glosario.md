@@ -3,7 +3,7 @@
 > **Documento:** Glosario de Términos
 > **Fase SDLC:** Transversal (inicia en Fase 1, se mantiene en todo el ciclo)
 > **Estado:** `BORRADOR — PENDIENTE DE APROBACIÓN`
-> **Versión:** 0.3.0 (amplía la versión semilla de `VisionProyecto.md`)
+> **Versión:** 0.4.0 (amplía la versión semilla de `VisionProyecto.md`)
 > **Fecha:** 2026-07-08
 > **Autor:** Equipo Enterprise
 > **Propósito:** Unificar el lenguaje del proyecto (lenguaje ubicuo de DDD) entre negocio y técnica.
@@ -96,6 +96,16 @@ Este glosario define el **lenguaje ubicuo** del proyecto: el vocabulario común 
 | Soft Delete           | Borrado lógico: marca como eliminado sin borrar físicamente.     |
 | Paginación            | División de resultados en páginas (PageNumber, PageSize).        |
 | DTO                   | Data Transfer Object: objeto para transportar datos entre capas. |
+| E2E (End To End)      | Prueba que recorre el sistema completo, de extremo a extremo: navegador → frontend → API → base de datos. Verifica el comportamiento tal como lo experimenta el usuario final, no piezas aisladas. |
+| Playwright            | Framework de pruebas E2E que automatiza un navegador real. Herramienta de la capa E2E del proyecto (13 specs — `Testing.md` §6.3). |
+| Spec                  | Archivo de pruebas de Playwright (`*.spec.ts`). Agrupa las pruebas de un flujo funcional (p. ej. `auth.spec.ts`). |
+| Testcontainers        | Librería que levanta contenedores Docker efímeros desde el código de las pruebas. Usada en las pruebas de integración del backend. |
+| Aislamiento de BD     | Principio por el cual cada ambiente (Producción, Desarrollo, Test) opera sobre una base de datos físicamente distinta. Ningún proceso de desarrollo o prueba escribe sobre Producción (ADR-012). |
+| BD efímera            | Base de datos que se crea y se destruye con cada ejecución, sin conservar datos entre corridas. Garantiza pruebas deterministas. En este proyecto se implementa montando el directorio de datos en RAM (`tmpfs`). |
+| tmpfs                 | Sistema de archivos montado en memoria RAM. Su contenido desaparece al detener el contenedor. Usado en `docker-compose.test.yml` para que la BD de test no pueda persistir datos. |
+| Paridad de entornos   | Principio (12-Factor App) según el cual desarrollo, prueba y producción deben ser lo más parecidos posible. En este proyecto: misma imagen `postgres:15-alpine` en los tres. |
+| Quality Gate          | Criterio de salida obligatorio que detiene el pipeline si no se cumple (cobertura ≥ 90%, suite E2E en verde, 0 vulnerabilidades críticas). |
+| Flaky test            | Prueba que falla de forma intermitente sin que el código haya cambiado. Suele indicar un problema de aislamiento o de sincronización, no un defecto real del sistema. |
 
 ## 6. Control de Cambios y Aprobación
 

@@ -64,16 +64,40 @@ builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
 
 // Almacenamiento de imagenes: se registra aqui (no en AddInfrastructure)
-// porque necesita IWebHostEnvironment, que solo esta disponible en el
-// proyecto API (Infrastructure es una class library plana sin ASP.NET Core).
-builder.Services.AddSingleton<IAlmacenamientoService>(_ =>
+// porque el fallback local necesita IWebHostEnvironment, que solo esta
+// disponible en el proyecto API (Infrastructure es una class library plana).
+//
+// Con Supabase__Url + Supabase__ServiceKey definidos (Render: Staging/Prod) se
+// usa Supabase Storage: el filesystem del contenedor de Render es EFIMERO y se
+// vacia en cada deploy o reinicio (el plan Free ademas duerme el servicio),
+// asi que todo archivo guardado en wwwroot/uploads termina en 404. Sin esas
+// variables (desarrollo local, pruebas de integracion) se conserva el
+// almacenamiento en disco.
+var supabaseUrl = builder.Configuration["Supabase:Url"];
+var supabaseServiceKey = builder.Configuration["Supabase:ServiceKey"];
+if (!string.IsNullOrWhiteSpace(supabaseUrl) && !string.IsNullOrWhiteSpace(supabaseServiceKey))
 {
-    var webRoot = builder.Environment.WebRootPath
-        ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
-    var rutaUploads = Path.Combine(webRoot, "uploads");
-    var baseUrl = builder.Configuration["BackendUrl"] ?? "https://localhost:7149";
-    return new AlmacenamientoLocalService(rutaUploads, baseUrl);
-});
+    var bucket = builder.Configuration["Supabase:Bucket"] ?? "uploads";
+    builder.Services.AddHttpClient("supabase-storage", client =>
+    {
+        client.BaseAddress = new Uri(supabaseUrl.TrimEnd('/') + "/");
+        client.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", supabaseServiceKey);
+    })
+    .AddTypedClient<IAlmacenamientoService>(http =>
+        new AlmacenamientoSupabaseService(http, bucket));
+}
+else
+{
+    builder.Services.AddSingleton<IAlmacenamientoService>(_ =>
+    {
+        var webRoot = builder.Environment.WebRootPath
+            ?? Path.Combine(builder.Environment.ContentRootPath, "wwwroot");
+        var rutaUploads = Path.Combine(webRoot, "uploads");
+        var baseUrl = builder.Configuration["BackendUrl"] ?? "https://localhost:7149";
+        return new AlmacenamientoLocalService(rutaUploads, baseUrl);
+    });
+}
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>

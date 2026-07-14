@@ -16,9 +16,9 @@ test.describe('Busqueda de objetos', () => {
   });
 
   test('filtra resultados por texto de busqueda', async ({ page }) => {
-    // Autónomo y con títulos únicos por corrida: publica los dos objetos que
+    // Autonomo y con titulos unicos por corrida: publica los dos objetos que
     // luego filtra (en vez de asumir datos demo preexistentes) y usa un sufijo
-    // único para que el filtro devuelva exactamente una coincidencia, sin
+    // unico para que el filtro devuelva exactamente una coincidencia, sin
     // chocar con objetos de corridas anteriores (strict-mode de Playwright).
     const sufijo = Date.now();
     const correo = `e2e-buscar-${sufijo}@example.com`;
@@ -33,8 +33,18 @@ test.describe('Busqueda de objetos', () => {
     await page.getByLabel('Buscar').fill(tituloTablet);
     await page.getByRole('button', { name: 'Buscar' }).click();
 
-    await expect(page.getByRole('heading', { name: tituloTablet })).toBeVisible();
-    await expect(page.getByRole('heading', { name: tituloLaptop })).not.toBeVisible();
+    // Espera explicita a que el submit se procese: la URL refleja el filtro
+    // aplicado. Sin esto, las aserciones corren contra el listado sin filtrar
+    // porque React aun no completo el refetch ni el re-render.
+    await expect(page).toHaveURL(/search=/);
+
+    // Asercion sobre el conjunto de resultados, no sobre la ausencia de un
+    // elemento: verificamos que el filtro devuelve exactamente una tarjeta y
+    // que es la esperada. Evita el antipatron de .not.toBeVisible(), que es
+    // ambiguo (no distingue "filtrado correctamente" de "todavia no cargo").
+    const tarjetas = page.getByRole('heading', { level: 3 });
+    await expect(tarjetas).toHaveCount(1);
+    await expect(tarjetas.first()).toHaveText(tituloTablet);
   });
 
   test('navega al detalle de un objeto desde la tarjeta', async ({ page }) => {

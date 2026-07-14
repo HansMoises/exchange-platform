@@ -3,7 +3,7 @@
 
 > **Documento:** Estrategia de Despliegue
 > **Fase SDLC:** 2 (Diseño) — documento de proceso / DevOps; base para Fase 5
-> **Versión:** 1.4.0
+> **Versión:** 1.5.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
 > **Fecha:** 2026-07-10
 > **Autor:** Equipo Enterprise Senior (Especialista DevOps / Arquitecto)
@@ -21,6 +21,8 @@
 | 1.2.0   | 2026-07-09 | Equipo Enterprise Senior | Despliegue movido de VPS Hostinger (Docker Compose) a **Vercel (frontend) + Render (backend)**. Ver ADR-011 en `Arquitectura.md`. Procedimiento de despliegue, migraciones y rollback actualizados a los mecanismos nativos de cada plataforma. |
 | 1.3.0   | 2026-07-10 | Equipo Enterprise Senior | Migraciones ahora se aplican **automáticamente al arrancar el backend** (`Program.cs`, flag `RunMigrationsAtStartup`), eliminando el paso manual como prerrequisito. Sección 4 actualizada. |
 | 1.4.0   | 2026-07-10 | Equipo Enterprise Senior | Conexión a Supabase: se recomienda el **Session pooler (5432)** para el backend persistente y se documenta el **endurecimiento del pool Npgsql** (KeepAlive, ConnectionIdleLifetime, reintentos) que corrige 500 intermitentes por conexiones muertas reutilizadas. Prerrequisitos y sección 4 actualizados. |
+| 1.5.0   | 2026-07-13 | Equipo Enterprise Senior | **Tabla de ambientes corregida conforme a ADR-012:** Development y Testing dejan de usar proyectos Supabase y pasan a contenedores Docker locales (`exchange-dev-db` `:5432` y `exchange-db-test` `:5433`). Supabase queda restringido a Staging y Producción. |
+| 1.6.0   | 2026-07-14 | Equipo Enterprise Senior | **Imágenes a Supabase Storage en Staging/Producción.** El filesystem de Render es efímero (se vacía en cada deploy/reinicio), por lo que las imágenes guardadas en `wwwroot/uploads` se perdían y quedaban en 404. Nuevo `AlmacenamientoSupabaseService` (activo cuando `Supabase__Url` y `Supabase__ServiceKey` están definidos); el almacenamiento local en disco queda solo para Development y Testing. Prerrequisitos actualizados. |
 
 ---
 
@@ -41,16 +43,29 @@
 
 ## 1. Ambientes
 
-| Ambiente    | Propósito                                     | Frontend / Backend           | Proyecto Supabase (BD)     |
+| Ambiente    | Propósito                                     | Frontend / Backend           | Base de datos (ADR-012)     |
 |-------------|-----------------------------------------------|-------------------------------|------------------------------|
-| Development | Desarrollo local. Debug, Swagger, hot reload. | Local (Vite dev server / dotnet run) | exchange-platform-dev        |
-| Testing     | Pruebas automatizadas en CI.                  | Pipeline (GitHub Actions)    | exchange-platform-test (o BD efímera en el runner de CI) |
-| Staging     | Validación pre-producción. Espejo de prod.    | Vercel (preview) + Render (staging service) | exchange-platform-staging    |
-| Production  | Sistema en uso real. Sin debug ni Swagger.    | Vercel (producción) + Render (producción) | exchange-platform-prod       |
+| Development | Desarrollo local. Debug, Swagger, hot reload. | Local (Vite dev server / dotnet run) | **Docker `exchange-dev-db`** · `localhost:5432` · DB `exchange_platform` |
+| Testing     | Suite E2E (Playwright) y pruebas en CI.       | Local (`start-e2e.ps1`) o runner de GitHub Actions | **Docker `exchange-db-test`** · `localhost:5433` · DB `exchange_test` · **efímera (`tmpfs`)** |
+| Staging     | Validación pre-producción. Espejo de prod.    | Vercel (preview) + Render (staging service) | Supabase — `exchange-platform-staging` |
+| Production  | Sistema en uso real. Sin debug ni Swagger.    | Vercel (producción) + Render (producción) | **Supabase — `PLATAFORMAIDIOA`** (pooler `:6543`) |
 
-Cada ambiente tiene su propia configuración, variables de entorno y su **propio proyecto Supabase** (aislamiento total — Supabase aísla por proyecto, no por base de datos dentro de una misma instancia).
+> **⚠️ CAMBIO RESPECTO A v1.4.0 (ADR-012).** Development y Testing **ya no usan Supabase**.
+> Motivo: bajo el diseño anterior, el desarrollo local y las pruebas automatizadas escribían
+> usuarios, objetos e intercambios de prueba en un proyecto Supabase, consumiendo cuota del plan
+> gratuito y — en el peor caso — contaminando los datos que se exhiben en la sustentación de tesis.
+> A partir de esta versión, **ningún proceso local o de CI se conecta a Supabase**.
 
-> **Nota sobre Testing:** para pruebas de integración en CI se recomienda usar Testcontainers con PostgreSQL en Docker (no Supabase real), evitando consumir cuota del proyecto Supabase y garantizando pruebas reproducibles y aisladas por ejecución.
+```
+   Development  ──►  Docker :5432   (exchange_platform)   persistente
+   Testing      ──►  Docker :5433   (exchange_test)       efímera / tmpfs
+   Staging      ──►  Supabase       (staging)
+   Production   ──►  Supabase       (PLATAFORMAIDIOA)     ⛔ intocable desde local
+```
+
+> **Nota sobre pruebas de integración:** siguen usando **Testcontainers** con `postgres:15-alpine`
+> (`Testing.md` §3.1) — misma imagen que los contenedores de Development y Testing, garantizando
+> paridad de entornos. Las pruebas E2E usan el contenedor dedicado `exchange-db-test`.
 
 ---
 
@@ -66,6 +81,11 @@ Antes de cualquier despliegue:
   Transaction pooler (6543): este último rota conexiones entre clientes y provoca 500 intermitentes con un servicio ASP.NET Core que
   mantiene su propio pool Npgsql.
 □ Proyecto Supabase del ambiente activo (no pausado por inactividad).
+□ Supabase Storage configurado para las imágenes (Render): bucket PÚBLICO creado en el proyecto
+  Supabase del ambiente (por defecto "uploads") y variables Supabase__Url (https://[ref].supabase.co),
+  Supabase__ServiceKey (service_role key — Settings → API) y opcionalmente Supabase__Bucket.
+  Sin estas variables el backend guarda en el disco del contenedor, que Render BORRA en cada
+  deploy/reinicio → imágenes rotas (404). El almacenamiento local queda solo para Development/Testing.
 □ Servicio de Render del ambiente activo (no dormido — ver §7 y `keep-alive-supabase.yml` en CICD.md).
 □ Backup reciente de la base de datos (en Staging/Producción).
 □ Checklist "Antes de Desplegar" completo (sección 9).

@@ -3,9 +3,9 @@
 
 > **Documento:** Checklist y Gates de Calidad
 > **Fase SDLC:** Transversal — instrumento de verificación
-> **Versión:** 1.0.0
+> **Versión:** 1.1.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-06-03
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise Senior (QA / Arquitecto / DevOps)
 > **Documentos padre:** Testing.md | Seguridad.md | Deployment.md | Convenciones.md | Arquitectura.md
 > **Convenciones:** Documentación en español.
@@ -17,6 +17,7 @@
 | Versión | Fecha      | Autor                    | Cambios          |
 |---------|------------|--------------------------|------------------|
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
+| 1.1.0   | 2026-07-13 | Equipo Enterprise Senior | Se incorpora la verificación de **pruebas E2E** (Playwright) a la Definición de Terminado y al gate de la Fase 4. Se añade la comprobación de **aislamiento de base de datos** (ADR-012): ninguna prueba escribe en producción. |
 
 ---
 
@@ -43,7 +44,7 @@ Ninguna fase avanza sin que la anterior haya pasado su gate (aprobación documen
 | Análisis       | 1-4 (+Historias, Trazabilidad) | Requisitos completos, reglas y casos aprobados, trazabilidad cerrada.    |
 | Diseño         | 5-8 (UML→API)                  | UML, Arquitectura, BD y API aprobados; checklist "Antes de Implementar". |
 | Desarrollo     | —                              | Código según diseño, code review aprobado, build CI verde.               |
-| Pruebas        | —                              | Cobertura ≥90%, 0 críticos, DoD cumplido, OWASP verificado.              |
+| Pruebas        | —                              | Cobertura ≥90%, **suite E2E 13/13 en verde**, 0 defectos críticos, DoD cumplido, OWASP verificado, **0 escrituras sobre la BD de producción**. |
 | Despliegue     | —                              | Checklist "Antes de Desplegar", backup, aprobación manual.               |
 | Mantenimiento  | —                              | Cada cambio documentado, probado, desplegado y trazable.                 |
 
@@ -97,12 +98,20 @@ Una funcionalidad/historia está "Terminada" cuando:
 □ Cumple convenciones de código (Convenciones.md).
 □ Code review aprobado (técnico, funcional, seguridad, arquitectura).
 □ Pruebas unitarias y de integración escritas y pasando.
+□ Si toca un flujo crítico: prueba E2E (Playwright) escrita y pasando.
+□ Suite E2E completa en verde (13/13 — Testing.md §6.3).
 □ Cobertura del ámbito cumplida.
 □ Criterios de aceptación de la historia verificados.
 □ Sin defectos críticos ni altos abiertos.
-□ Documentación actualizada (Backend.md / Frontend.md / API.md).
-□ Build verde en CI.
+□ Documentación actualizada (Backend.md / Frontend.md / API.md / Testing.md).
+□ Build verde en CI (incluida la etapa E2E — CICD.md §3).
 □ Trazabilidad mantenida (requisito ↔ código ↔ prueba).
+
+VERIFICACIÓN DE AISLAMIENTO DE DATOS (ADR-012)
+□ Ninguna prueba se ha conectado a Supabase (producción).
+□ La BD de test (:5433) es efímera — sin volumen persistente.
+□ `ConnectionStrings__DefaultConnection` fijada explícitamente antes de migrar.
+□ Confirmación visual del puerto activo antes de `dotnet ef database update`.
 ```
 
 ---

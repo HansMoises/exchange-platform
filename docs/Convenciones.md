@@ -3,7 +3,7 @@
 
 > **Documento:** Convenciones de Código y Trabajo
 > **Fase SDLC:** 2 (Diseño) — documento complementario, base para Fase 3
-> **Versión:** 1.0.0
+> **Versión:** 1.1.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
 > **Fecha:** 2026-06-03
 > **Autor:** Equipo Enterprise Senior (Arquitecto / Programador Senior)
@@ -17,6 +17,7 @@
 | Versión | Fecha      | Autor                    | Cambios          |
 |---------|------------|--------------------------|------------------|
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
+| 1.1.0   | 2026-07-13 | Equipo Enterprise Senior | Se añade la convención de nomenclatura para **pruebas E2E** (`*.spec.ts`) y la regla de **variables de entorno .NET con doble guion bajo** (`ConnectionStrings__DefaultConnection`), crítica para el aislamiento de base de datos (ADR-012). |
 
 ---
 
@@ -138,6 +139,31 @@ public class CrearObjetoCommandHandler
 | Constantes          | UPPER_CASE     | API_BASE_URL, MAX_IMAGENES       |
 | Variables/funciones | camelCase      | handleSubmit, objetoSeleccionado |
 | Archivos de schema  | camelCase + .schemas | auth.schemas.ts            |
+| Pruebas de componente | PascalCase + .test    | LoginForm.test.tsx         |
+| Pruebas E2E           | camelCase + .spec     | auth.spec.ts, exchanges.spec.ts |
+| Fixtures E2E          | camelCase + .fixture  | auth.fixture.ts            |
+
+> **Distinción `.test.tsx` vs `.spec.ts`:** el sufijo `.test` identifica pruebas de Vitest
+> (unitarias y de componentes, viven junto al código en `src/features/*/__tests__/`). El sufijo
+> `.spec` identifica pruebas de Playwright (End To End, viven en `frontend/e2e/`). No es
+> intercambiable: los *runners* están configurados para reclamar solo su propio sufijo.
+
+### 4.2 Variables de Entorno (.NET) — convención crítica
+
+La configuración anidada de .NET se mapea a variables de entorno con **doble guion bajo** (`__`),
+no con dos puntos ni con punto:
+
+| Configuración en `appsettings.json`   | Variable de entorno                    |
+|---------------------------------------|----------------------------------------|
+| `ConnectionStrings:DefaultConnection` | `ConnectionStrings__DefaultConnection` |
+| `Jwt:Secret`                          | `Jwt__Secret`                          |
+| `Jwt:Issuer`                          | `Jwt__Issuer`                          |
+| `AllowedOrigins`                      | `AllowedOrigins`                       |
+
+> ⚠️ **Precedencia:** la variable de entorno **sobrescribe** el valor de `appsettings.json`.
+> Si `ConnectionStrings__DefaultConnection` no está definida, el `DesignTimeDbContextFactory`
+> de EF Core cae **silenciosamente** al puerto 5432. Ver ADR-012 (`Arquitectura.md`),
+> RGO-016 (`Riesgos.md`) y `Testing.md` §12.1.
 
 ### 4.2 Reglas
 

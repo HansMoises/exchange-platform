@@ -3,9 +3,9 @@
 
 > **Documento:** Guía de Implementación del Frontend
 > **Fase SDLC:** 3 (Desarrollo / Implementación)
-> **Versión:** 1.0.0
+> **Versión:** 1.1.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-06-03
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise Senior (Frontend Developer Senior / Arquitecto / UX-UI)
 > **Documentos padre:** Arquitectura.md | UX.md | UI.md | API.md | Seguridad.md | Convenciones.md
 > **Convenciones:** Documentación en español; código en español (con APIs de librerías en su idioma). Diagramas en ASCII. Stack: React + TypeScript.
@@ -17,6 +17,7 @@
 | Versión | Fecha      | Autor                    | Cambios          |
 |---------|------------|--------------------------|------------------|
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
+| 1.1.0   | 2026-07-13 | Equipo Enterprise Senior | Se incorpora **Playwright** al stack de pruebas (capa E2E implementada — `Testing.md` v1.2.0). Se documenta el directorio `e2e/` y el archivo `playwright.config.ts` en la estructura del proyecto. Se añaden los scripts de npm para la ejecución de la suite. |
 
 ---
 
@@ -52,7 +53,8 @@ Guía de implementación del SPA según el diseño aprobado. No redefine UX/UI; 
 | Ruteo       | React Router DOM               |
 | Formularios | React Hook Form + Zod          |
 | Estado      | Zustand (stores por módulo)    |
-| Pruebas     | Vitest + React Testing Library |
+| Pruebas (unitarias/componentes) | Vitest + React Testing Library |
+| Pruebas (End To End)            | **Playwright** — 13 specs, ver `Testing.md` §6.3 |
 
 ---
 
@@ -61,21 +63,52 @@ Guía de implementación del SPA según el diseño aprobado. No redefine UX/UI; 
 Feature Based (detalle en Arquitectura.md §4.1).
 
 ```
-src/
-├── assets/
-├── components/ui/        ← componentes reutilizables (Button, Input, Card...)
-├── components/layout/    ← Navbar, Sidebar, Footer
-├── features/             ← módulos: auth, users, objects, exchanges, ...
-├── layouts/              ← Public, Auth, Dashboard, Admin
-├── pages/                ← páginas que componen features + layout
-├── routes/               ← AppRouter, Public/Protected/RoleBased Route
-├── services/             ← apiClient (Axios)
-├── stores/               ← Zustand stores
-├── hooks/                ← hooks globales
-├── types/                ← tipos globales
-├── utils/                ← formatters, validators, constants
-└── styles/               ← globals.css (tokens)
+frontend/
+├── src/
+│   ├── assets/
+│   ├── components/ui/        ← componentes reutilizables (Button, Input, Card...)
+│   ├── components/layout/    ← Navbar, Sidebar, Footer
+│   ├── features/             ← módulos: auth, users, objects, exchanges, ...
+│   │     └── */__tests__/    ← pruebas de componentes (Vitest + RTL)
+│   ├── layouts/              ← Public, Auth, Dashboard, Admin
+│   ├── pages/                ← páginas que componen features + layout
+│   ├── routes/               ← AppRouter, Public/Protected/RoleBased Route
+│   ├── services/             ← apiClient (Axios)
+│   ├── stores/               ← Zustand stores
+│   ├── hooks/                ← hooks globales
+│   ├── types/                ← tipos globales
+│   ├── utils/                ← formatters, validators, constants
+│   └── styles/               ← globals.css (tokens)
+│
+├── e2e/                      ← ★ PRUEBAS END TO END (Playwright)
+│   ├── auth.spec.ts          ← PR-090..PR-093
+│   ├── objects.spec.ts       ← PR-094..PR-096
+│   ├── search.spec.ts        ← PR-097, PR-098
+│   ├── exchanges.spec.ts     ← PR-099..PR-101
+│   ├── favorites.spec.ts     ← PR-102
+│   └── fixtures/
+│         ├── auth.fixture.ts ← sesión autenticada reutilizable
+│         └── seed.ts         ← datos de partida
+│
+└── playwright.config.ts      ← baseURL, navegadores, reporters, retries
 ```
+
+> **Separación deliberada:** las pruebas de componentes viven **junto al código** que prueban
+> (`features/*/__tests__/`), mientras que las pruebas E2E viven en un directorio **hermano de
+> `src/`**. Motivo: las E2E no prueban componentes, prueban el **sistema completo** (navegador →
+> frontend → API → base de datos). No pertenecen al árbol de código fuente.
+
+### Scripts de npm
+
+| Script                  | Comando                            | Uso                                  |
+|-------------------------|------------------------------------|--------------------------------------|
+| `npm run test`          | `vitest`                           | Unitarias y de componentes.          |
+| `npm run test:e2e`      | `playwright test`                  | Suite E2E completa (13 specs).       |
+| `npm run test:e2e:ui`   | `playwright test --ui`             | Modo interactivo (depuración).       |
+| `npm run test:e2e:report` | `playwright show-report`         | Informe HTML de la última ejecución. |
+
+> La ejecución completa (levantar BD de test, migrar, arrancar backend y frontend, correr las
+> specs) la orquesta el script `start-e2e.ps1` desde la raíz del repositorio — ver `Testing.md` §13.
 
 ---
 

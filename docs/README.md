@@ -60,8 +60,13 @@ Miles de objetos en desuso tienen valor para otras personas, pero los canales ac
 - TailwindCSS · Axios · React Router DOM
 - React Hook Form · Zod · Zustand
 
+**Pruebas**
+- Vitest · React Testing Library (unitarias y componentes)
+- xUnit · Moq · FluentAssertions · Testcontainers (backend)
+- **Playwright** (End To End — 13 specs)
+
 **DevOps**
-- Docker · Docker Compose (desarrollo local)
+- Docker · Docker Compose (desarrollo local y BD de pruebas)
 - Git · GitHub · GitHub Actions (CI/CD)
 - **Despliegue:** Vercel (frontend) · Render (backend) · Supabase (BD) — plan gratuito
 
@@ -101,11 +106,36 @@ cp .env.example .env
 # Editar .env con los valores del ambiente (ver Docker.md)
 
 # 3. Levantar todo con Docker Compose (local)
+#    Incluye el contenedor de base de datos `exchange-dev-db` (:5432)
 docker compose up -d --build
 
 # 4. Aplicar migraciones de base de datos
 docker compose exec backend dotnet ef database update
 ```
+
+### 7.1 Ejecutar las pruebas End To End
+
+```powershell
+# Ejecuta TODO: levanta la BD de test (:5433), migra, arranca backend y frontend,
+# corre las 13 specs de Playwright y limpia al terminar.
+.\start-e2e.ps1
+```
+
+Comandos individuales:
+
+| Acción                        | Comando                                             |
+|-------------------------------|-----------------------------------------------------|
+| Suite E2E completa            | `.\start-e2e.ps1`                                   |
+| Una sola spec                 | `npx playwright test e2e/auth.spec.ts`              |
+| Modo interactivo (depuración) | `npx playwright test --ui`                          |
+| Informe HTML                  | `npx playwright show-report`                        |
+| Levantar solo la BD de test   | `docker compose -f docker-compose.test.yml up -d`   |
+| Destruir la BD de test        | `docker compose -f docker-compose.test.yml down -v` |
+
+> ⚠️ **Aislamiento de datos (ADR-012).** Las pruebas **nunca** se conectan a Supabase.
+> Desarrollo usa `exchange-dev-db` (`:5432`); las pruebas E2E usan `exchange-db-test` (`:5433`),
+> una base de datos **efímera** que se destruye al terminar. Supabase está reservado
+> exclusivamente para Producción.
 
 Servicios disponibles (local):
 
@@ -117,7 +147,7 @@ Servicios disponibles (local):
 
 Para desarrollo sin Docker, consultar [`docs/Backend.md`](docs/Backend.md) y [`docs/Frontend.md`](docs/Frontend.md) (Fase 3).
 
-### 7.1 Despliegue Público
+### 7.2 Despliegue Público
 
 | Servicio | Plataforma | Detalle |
 |----------|-----------|---------|
@@ -144,7 +174,9 @@ exchange-platform/
 ├── database/          ← Scripts y seed (UBIGEO, datos maestros)
 ├── scripts/           ← Utilidades (cobertura, smoke tests)
 ├── deployment/        ← Configuración de despliegue
-├── docker-compose.yml
+├── docker-compose.yml          ← desarrollo local (frontend + backend + db :5432)
+├── docker-compose.test.yml     ← BD efímera para E2E (db-test :5433)
+├── start-e2e.ps1               ← orquestador de la suite E2E
 └── README.md
 ```
 

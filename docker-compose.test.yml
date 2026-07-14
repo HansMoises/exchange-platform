@@ -1,0 +1,20 @@
+services:
+  db-test:
+    image: postgres:15-alpine
+    container_name: exchange-db-test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: TestE2E2026
+      POSTGRES_DB: exchange_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata-test:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d exchange_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata-test:

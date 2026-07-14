@@ -3,7 +3,7 @@
 > **Documento:** Registro y Gestión de Riesgos
 > **Fase SDLC:** Transversal (inicia en Fase 1, se mantiene en todo el ciclo)
 > **Estado:** `BORRADOR — PENDIENTE DE APROBACIÓN`
-> **Versión:** 0.2.0 (amplía la versión semilla de `VisionProyecto.md`)
+> **Versión:** 0.3.0 (amplía la versión semilla de `VisionProyecto.md`)
 > **Fecha:** 2026-06-03
 > **Autor:** Equipo Enterprise (Arquitecto Empresarial / Product Owner)
 > **Conecta con:** `VisionProyecto.md`, `Seguridad.md` (OWASP), BCP/DRP (Parte 6).
@@ -51,6 +51,8 @@ Este registro identifica, evalúa y planifica la respuesta a los riesgos del pro
 | RGO-013 | Alcance creciente (scope creep)                       | Negocio   | Media | Alto  | Alto  | Evitar     |
 | RGO-014 | Cobertura de pruebas por debajo del 90%               | Técnico   | Media | Medio | Medio | Mitigar    |
 | RGO-015 | Mala experiencia de usuario reduce confianza          | Negocio   | Baja  | Alto  | Medio | Mitigar    |
+| RGO-016 | **Migración accidental sobre la BD de producción** por fallback silencioso de EF Core al puerto 5432 | Técnico   | Media | **Crítico** | **Alto** | Mitigar |
+| RGO-017 | Contaminación de la BD de producción con datos de prueba visibles en la sustentación | Técnico   | Alta  | Alto  | **Alto** | Evitar |
 
 > Estrategias: **Evitar** (eliminar la causa), **Mitigar** (reducir P o I), **Transferir** (delegar a un tercero), **Aceptar** (asumir con contingencia).
 
@@ -73,6 +75,8 @@ Este registro identifica, evalúa y planifica la respuesta a los riesgos del pro
 | RGO-013 | Alcance versionado por Roadmap; control de cambios; fuera de alcance explícito.                    | Product Owner / Arquitecto | Solicitudes fuera del MVP.               |
 | RGO-014 | Cobertura medida en CI; bloqueo de merge bajo umbral; revisión de pruebas.                         | QA / DevOps                | Cobertura < 90% en CI.                   |
 | RGO-015 | Diseño UX/UI cuidado, pruebas de usabilidad, accesibilidad WCAG.                                   | UX/UI / QA                 | Feedback negativo o abandono.            |
+| RGO-016 | Fijar `ConnectionStrings__DefaultConnection` de forma **explícita** antes de todo comando EF Core; confirmación visual del puerto activo en `start-e2e.ps1`; nombre de BD distinto por ambiente (`exchange_platform` vs `exchange_test`) como segunda capa de defensa. | DevOps / Backend | Cualquier `dotnet ef database update` sin la variable definida. |
+| RGO-017 | Aislamiento físico de BD en tres niveles (ADR-012): desarrollo y test corren sobre contenedores Docker; Supabase queda restringido a Producción. BD de test efímera (`tmpfs`). | Arquitecto / DevOps | Aparición de usuarios/objetos de prueba en el panel de administración de producción. |
 
 ## 6. Riesgos Críticos a Vigilar
 
@@ -97,6 +101,7 @@ Los de exposición **Alta** que definen la viabilidad del proyecto:
 |---------|------------|-------------------|---------------------------------------------------------------|
 | 0.1.0   | 2026-06-03 | Equipo Enterprise | Versión semilla incluida en la Visión.                        |
 | 0.2.0   | 2026-06-03 | Equipo Enterprise | Registro ampliado: escalas, exposición, planes y seguimiento. |
+| 0.3.0   | 2026-07-13 | Equipo Enterprise | Se registran dos riesgos nuevos derivados de la implementación E2E y de ADR-012: **RGO-016** (migración accidental sobre producción por el fallback silencioso del `DesignTimeDbContextFactory` de EF Core al puerto 5432) y **RGO-017** (contaminación de la BD de producción con datos de prueba). Ambos con sus planes de mitigación. |
 
 **Aprobación requerida (Fase 1):**
 

@@ -3,9 +3,9 @@
 
 > **Documento:** Arquitectura del Sistema
 > **Paso SDD:** 6 de 8 (Arquitectura) — **Fase SDLC:** 2 (Diseño)
-> **Versión:** 1.3.0
+> **Versión:** 1.4.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-07-09
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise Senior (Arquitecto de Software / Soluciones / Empresarial / Datos / Seguridad / DevOps)
 > **Documentos padre:** VisionProyecto.md | Requisitos.md | ReglasNegocio.md | CasosDeUso.md | HistoriasUsuario.md | MatrizTrazabilidad.md | UML.md
 > **Convenciones:** Documentación en español; código/entidades en español (Usuario, Objeto, Intercambio). Diagramas en ASCII. Decisiones registradas como ADR.
@@ -20,6 +20,7 @@
 | 1.1.0   | 2026-06-03 | Equipo Enterprise Senior | Estilo Clean Architecture en capas; mapeo atributos→RNF; ADR ampliados. |
 | 1.2.0   | 2026-07-08 | Equipo Enterprise Senior | Migración de motor de BD: SQL Server 2022 (contenedor propio) → PostgreSQL 15+ en Supabase (gestionado externo). Ver ADR-010. Diagramas C4, flujo CQRS, despliegue y escalabilidad actualizados. ADR-002 marcado como Reemplazado. |
 | 1.3.0   | 2026-07-09 | Equipo Enterprise Senior | Despliegue de frontend y backend movido de VPS Hostinger (Docker Compose + Nginx proxy) a **Vercel (frontend) + Render (backend)**, plan gratuito. Ver ADR-011. Diagrama de flujo general, sección 8 (Arquitectura de Despliegue), escalabilidad y trazabilidad actualizados. ADR-009 marcado como Vigente (parcial) — Docker Compose se conserva solo para desarrollo local. |
+| 1.4.0   | 2026-07-13 | Equipo Enterprise Senior | Se añade **ADR-012 — Aislamiento de bases de datos en tres niveles** (Producción/Supabase · Desarrollo/Docker `:5432` · Test/Docker `:5433`), motivado por la implementación de la suite E2E (Playwright, ver `Testing.md` v1.2.0). Modifica parcialmente **ADR-009** y **ADR-010**: el principio *"la BD corre en Supabase, fuera de Docker"* deja de ser cierto para los ambientes de Desarrollo y Test. ADR-010 marcado como *Modificado parcialmente*. Obliga a cascada sobre `Docker.md`, `Deployment.md`, `CICD.md`, `Testing.md`, `Riesgos.md` y `README.md`. |
 
 ---
 
@@ -1050,7 +1051,7 @@ Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra P
 | Decisión      | Empaquetar frontend y backend en contenedores orquestados con Docker Compose (BD ver ADR-010).    |
 | Consecuencias | Curva de adopción DevOps; entornos reproducibles y cloud-ready. **Actualización 2026-07-09:** el despliegue en la nube (Staging/Producción) pasa a Vercel + Render (ADR-011); Docker Compose se conserva para desarrollo local y como opción de portabilidad futura (§8.5). |
 
-### ADR-010 — Migración de motor de base de datos a PostgreSQL/Supabase
+### ADR-010 — Migración de motor de base de datos a PostgreSQL/Supabase (MODIFICADO PARCIALMENTE por ADR-012 — Supabase queda restringido al ambiente de Producción)
 
 | Campo         | Detalle                                                                                                                                                                                                                                                                                             |
 |---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -1075,6 +1076,57 @@ Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra P
 | Alternativas  | (1) Mantener VPS Hostinger + Docker Compose (ADR-009 sin cambios); (2) Vercel (frontend) + Render (backend), ambos con plan gratuito, + Supabase (BD, sin cambios); (3) Otras PaaS (Railway, Fly.io) — descartadas por no ofrecer mejor relación simplicidad/costo para .NET 10 + React en esta etapa. |
 | Decisión      | Desplegar el **frontend en Vercel** (build estático de Vite, CDN, HTTPS automático, integración nativa con GitHub) y el **backend en Render** (Web Service sobre el Dockerfile ya definido en Docker.md, HTTPS automático, integración con GitHub). Supabase se mantiene sin cambios (ADR-010). El contenedor `proxy` (Nginx) de ADR-009 se elimina del despliegue en la nube: cada plataforma termina TLS y enruta directamente. Docker Compose deja de ser el mecanismo de despliegue en Staging/Producción; se conserva únicamente para desarrollo local (ADR-009, actualizado). |
 | Consecuencias | (+) Costo $0; (+) HTTPS y CDN gestionados automáticamente por cada plataforma; (+) despliegue automático en cada push/merge vía integración nativa con GitHub, sin SSH ni gestión de servidor; (+) menor superficie de mantenimiento (sin SO, sin Nginx, sin parches de host). (-) El plan gratuito de Render suspende el servicio tras ~15 min de inactividad, generando un cold start de 30–60s en la primera petición (mitigado parcialmente ampliando `keep-alive-supabase.yml` para incluir el endpoint de Render, ver CICD.md); (-) dependencia de dos proveedores externos adicionales (Vercel, Render) sumados a Supabase; (-) menor control operativo que un VPS propio (límites de build time, ancho de banda y cómputo del plan gratuito a vigilar antes de un eventual crecimiento — Fase 3, §14.1); (-) reemplaza parcialmente a ADR-009, obligando a actualizar `Deployment.md`, `Docker.md`, `CICD.md`, `UML.md` y `README.md` en cascada (pendiente, próximas iteraciones). |
+
+---
+
+### ADR-012 — Aislamiento de bases de datos en tres niveles (Producción / Desarrollo / Test)
+
+| Campo         | Detalle                                                                                                                                                                                                                                                                                             |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Estado        | Aprobado                                                                                                                                                                                                                                                                                            |
+| Fecha         | 2026-07-13                                                                                                                                                                                                                                                                                          |
+| Contexto      | ADR-010 estableció Supabase (PostgreSQL) como motor de base de datos, y `Docker.md` v1.2.0 declaró explícitamente que la BD queda *"fuera de Docker Compose"*, sin servicio `db` local. Bajo ese diseño, el backend en desarrollo local se conecta al **mismo proyecto Supabase** que la aplicación desplegada. Con la incorporación de la suite E2E (Playwright, `Testing.md` v1.2.0) — que crea usuarios, objetos e intercambios de forma automatizada en cada ejecución — ese diseño resulta inviable. |
+| Problema      | (1) **Contaminación de datos de producción:** el desarrollo local y las pruebas E2E escriben registros basura (usuarios, objetos, intercambios) en la BD que se expondrá durante la sustentación de tesis, alterando listados, búsquedas e indicadores del panel de administración (RF-111). (2) **Riesgo de corrupción de esquema:** `dotnet ef database update` ejecutado durante el desarrollo aplicaría migraciones directamente sobre producción, sin rollback. (3) **Consumo de cuota:** el plan gratuito de Supabase se agota con tráfico de desarrollo y pruebas. (4) **Pruebas no deterministas:** una suite E2E que depende de una BD compartida y mutable no es reproducible (ver DEF-01 / PR-097 en `Testing.md`). |
+| Alternativas  | (1) Mantener el diseño de ADR-010 + `Docker.md` (BD única en Supabase para todos los ambientes) — **descartada:** viola la paridad de entornos y expone producción. (2) Aislar **solo** la BD de test en Docker, dejando desarrollo local contra Supabase — **descartada:** mitiga la contaminación por E2E pero no la del desarrollo diario, que es la fuente principal de datos basura. (3) Usar esquemas (`schemas`) separados dentro del mismo proyecto Supabase — **descartada:** no aísla frente a errores de migración ni protege ante `DROP`, y sigue consumiendo cuota. (4) **Aislamiento físico en tres niveles** — **adoptada.** |
+| Decisión      | Establecer **tres bases de datos físicamente separadas**, seleccionables por variable de entorno: **(N1) Producción** — Supabase (`PLATAFORMAIDIOA`), pooler `aws-1-us-east-2.pooler.supabase.com:6543`; uso exclusivo de la aplicación desplegada (Vercel + Render); *ningún proceso de desarrollo o prueba se conecta a este nivel*. **(N2) Desarrollo** — contenedor Docker `exchange-dev-db` (PostgreSQL 15), `localhost:5432`; uso: desarrollo local diario y exploración manual. **(N3) Test** — contenedor Docker `exchange-db-test` (PostgreSQL 15), `localhost:5433`, definido en `docker-compose.test.yml`; uso **exclusivo** de la suite E2E de Playwright; se levanta y se destruye por ejecución. La selección se resuelve por **precedencia de configuración**: la variable de entorno `ConnectionStrings__DefaultConnection` **sobrescribe** cualquier valor de `appsettings.json`. El script `start-e2e.ps1` la fija explícitamente antes de ejecutar migraciones o pruebas, e imprime el puerto activo como confirmación visual. |
+| Consecuencias | (+) La BD de producción permanece limpia y presentable para la sustentación; (+) desarrollo local sin riesgo — se puede romper, migrar o vaciar la BD sin consecuencias; (+) pruebas E2E deterministas y reproducibles sobre una BD efímera; (+) se preserva la cuota del plan gratuito de Supabase; (+) cumple el principio de paridad de entornos (12-Factor App). (-) Requiere Docker Desktop en ejecución para desarrollar; (-) tres cadenas de conexión que mantener sincronizadas; (-) **riesgo residual crítico:** el `DesignTimeDbContextFactory` de EF Core cae **silenciosamente** al puerto 5432 si `ConnectionStrings__DefaultConnection` no está definida, pudiendo aplicar migraciones sobre la BD equivocada sin emitir aviso — mitigado con la confirmación visual de puerto de `start-e2e.ps1` y registrado como **RGO-016** en `Riesgos.md`; (-) **modifica parcialmente a ADR-009 y ADR-010**: el principio *"la BD corre en Supabase, fuera de Docker Compose"* (`Docker.md` §1) deja de ser cierto para N2 y N3 — obliga a actualizar `Docker.md`, `Deployment.md`, `CICD.md`, `Testing.md`, `Riesgos.md` y `README.md` en cascada. |
+
+#### Diagrama de los tres niveles
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│  N1 — PRODUCCIÓN                                          ⛔ INTOCABLE │
+│  Supabase · PLATAFORMAIDIOA                                          │
+│  aws-1-us-east-2.pooler.supabase.com:6543                            │
+│  Consumidores: Vercel (frontend) + Render (backend) desplegados      │
+└──────────────────────────────────────────────────────────────────────┘
+              ▲
+              │  ✗  NINGÚN proceso local se conecta aquí
+              │
+┌──────────────────────────────────────────────────────────────────────┐
+│  N2 — DESARROLLO                                                     │
+│  Docker · exchange-dev-db · PostgreSQL 15                            │
+│  localhost:5432                                                      │
+│  Consumidores: backend en `dotnet run` local                         │
+└──────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────┐
+│  N3 — TEST                                                           │
+│  Docker · exchange-db-test · PostgreSQL 15                           │
+│  localhost:5433  (docker-compose.test.yml)                           │
+│  Consumidores: suite E2E Playwright (start-e2e.ps1) — efímera        │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+#### Precedencia de resolución de la cadena de conexión
+
+| Prioridad | Origen                                          | Gana |
+|-----------|-------------------------------------------------|------|
+| 1         | `ConnectionStrings__DefaultConnection` (env var) | ✅    |
+| 2         | `appsettings.{Environment}.json`                 |      |
+| 3         | `appsettings.json`                               |      |
+
+> ⚠️ **Trampa conocida:** si la variable de entorno **no está definida**, el `DesignTimeDbContextFactory` de EF Core cae al puerto **5432** sin emitir advertencia. Consecuencia: `dotnet ef database update` aplica las migraciones sobre la BD equivocada de forma silenciosa. **Mitigación obligatoria:** fijar la variable de forma explícita antes de cualquier comando de EF Core (ver `Testing.md` §12.1 y `Riesgos.md` RGO-016).
 
 ---
 

@@ -3,8 +3,8 @@
 > **Documento:** Matriz de Trazabilidad
 > **Fase SDLC:** 1 (Análisis) — consolidación y cierre
 > **Estado:** `BORRADOR — PENDIENTE DE APROBACIÓN`
-> **Versión:** 0.1.0
-> **Fecha:** 2026-06-03
+> **Versión:** 0.2.0
+> **Fecha:** 2026-07-13
 > **Autor:** Equipo Enterprise (Arquitecto Empresarial / QA Senior)
 > **Depende de:** `VisionProyecto.md`, `Requisitos.md`, `ReglasNegocio.md`, `CasosDeUso.md`, `HistoriasUsuario.md`
 > **Principio rector:** *Nada existe sin trazabilidad.* Todo objetivo se realiza en requisitos, reglas, casos, historias, un módulo y al menos una prueba.
@@ -13,7 +13,7 @@
 
 ## 1. Introducción
 
-Esta matriz consolida y verifica la coherencia de toda la especificación de la Fase 1. Permite trazado **hacia adelante** (Objetivo → … → Prueba) y **hacia atrás** (Prueba → … → Objetivo), y es la herramienta base para el **análisis de impacto** ante cualquier cambio futuro. Los identificadores de prueba (PR-XXX) se desarrollarán en `Testing.md` durante la Fase de Pruebas.
+Esta matriz consolida y verifica la coherencia de toda la especificación de la Fase 1. Permite trazado **hacia adelante** (Objetivo → … → Prueba) y **hacia atrás** (Prueba → … → Objetivo), y es la herramienta base para el **análisis de impacto** ante cualquier cambio futuro. Los identificadores de prueba (PR-XXX) se desarrollan en `Testing.md`. **A partir de la v0.2.0 se incorporan los identificadores PR-090 a PR-102**, correspondientes a la capa de pruebas End To End (Playwright) ya implementada (`Testing.md` v1.2.0 §6.3).
 
 Cadena de trazabilidad:
 
@@ -36,6 +36,51 @@ Cadena de trazabilidad:
 | OE-011 | RF-033, RF-100, RF-101                               | RN-050..RN-052                 | UC-031                         | HU-030                 | objects, users         | PR-060, PR-061         |
 | OE-012 | RF-120, RF-121                                       | RN-062, RN-063                 | UC-090                         | HU-092                 | admin                  | PR-070, PR-071         |
 | OE-013 | RNF-010..RNF-012, RNF-020..RNF-022, RNF-050..RNF-053 | —                              | (transversal)                  | (transversal)          | (arquitectura)         | PR-080..PR-083         |
+
+### 2.1 Cobertura End To End (PR-090 .. PR-102)
+
+Las pruebas E2E (Playwright) **no sustituyen** a las pruebas unitarias/integración: verifican los mismos requisitos desde la perspectiva del usuario final, recorriendo el sistema completo (navegador → frontend → API → base de datos). Se trazan de forma independiente:
+
+| ID     | Spec E2E            | Objetivo (OE) | Requisitos / Reglas    | Caso de Uso | Historia | Prueba de laboratorio equivalente |
+|--------|---------------------|---------------|------------------------|-------------|----------|-----------------------------------|
+| PR-090 | `auth.spec.ts`      | OE-001        | RF-001, RN-003         | UC-001      | HU-001   | PR-001                            |
+| PR-091 | `auth.spec.ts`      | OE-002        | RF-003, RF-004         | UC-002      | HU-002   | PR-003                            |
+| PR-092 | `auth.spec.ts`      | OE-001        | RN-002, RN-004         | UC-001      | HU-001   | PR-002                            |
+| PR-093 | `auth.spec.ts`      | OE-002        | RF-004, RNF-003        | UC-002      | HU-002   | PR-003                            |
+| PR-094 | `objects.spec.ts`   | OE-003        | RF-020, RN-010         | UC-010      | HU-020   | PR-010                            |
+| PR-095 | `objects.spec.ts`   | OE-003        | RF-023, RN-013         | UC-011      | HU-021   | PR-012                            |
+| PR-096 | `objects.spec.ts`   | OE-003        | RF-023, RN-013         | UC-011      | HU-021   | PR-012                            |
+| PR-097 | `search.spec.ts`    | OE-004        | RF-030                 | UC-030      | HU-030   | PR-013                            |
+| PR-098 | `search.spec.ts`    | OE-004        | RF-031                 | UC-030      | HU-030   | PR-013                            |
+| PR-099 | `exchanges.spec.ts` | OE-005        | RF-040, RN-022         | UC-020      | HU-040   | PR-020                            |
+| PR-100 | `exchanges.spec.ts` | OE-005        | RN-023                 | UC-021      | HU-041   | PR-021                            |
+| PR-101 | `exchanges.spec.ts` | OE-007        | RN-020, RN-025         | UC-022      | HU-042   | PR-024                            |
+| PR-102 | `favorites.spec.ts` | OE-009        | RF-070, RN-042         | UC-050      | HU-060   | PR-040                            |
+
+**Cobertura E2E por objetivo estratégico:**
+
+| OE     | Descripción                       | ¿Cubierto por E2E? | Pruebas             |
+|--------|-----------------------------------|--------------------|---------------------|
+| OE-001 | Registro de usuarios              | ✅ Sí              | PR-090, PR-092      |
+| OE-002 | Autenticación y perfil            | ✅ Sí              | PR-091, PR-093      |
+| OE-003 | Publicación de objetos            | ✅ Sí              | PR-094..PR-096      |
+| OE-004 | Búsqueda y filtrado               | ✅ Sí              | PR-097, PR-098      |
+| OE-005 | Solicitud de intercambio          | ✅ Sí              | PR-099, PR-100      |
+| OE-006 | Historial de estados              | ⚠️ Indirecto       | (vía PR-101)        |
+| OE-007 | Confirmación y calificación       | ✅ Sí              | PR-101              |
+| OE-008 | Reportes y moderación             | ❌ No              | — *(brecha)*        |
+| OE-009 | Favoritos, mensajería, notificac. | ⚠️ Parcial         | PR-102 (solo favoritos) |
+| OE-010 | Panel de administración           | ❌ No              | — *(brecha)*        |
+| OE-011 | Geolocalización                   | ❌ No              | — *(brecha)*        |
+| OE-012 | Auditoría                         | ❌ No              | — *(brecha)*        |
+| OE-013 | Atributos de calidad (RNF)        | N/A                | (PR-080..PR-083)    |
+
+> **Brechas identificadas (deuda de cobertura E2E):** los objetivos **OE-008** (reportes/moderación),
+> **OE-010** (panel admin), **OE-011** (geolocalización) y **OE-012** (auditoría) están cubiertos por
+> pruebas de integración (PR-030, PR-050, PR-060, PR-070) pero **no por pruebas E2E**. No bloquea el
+> gate de calidad — la pirámide de pruebas (`Testing.md` §2) reserva la capa E2E para **flujos
+> críticos**, y estos son flujos secundarios o administrativos. Se registra aquí para trazabilidad
+> explícita, conforme al principio rector: *nada existe sin trazabilidad*.
 
 ## 3. Verificación por Caso de Uso (trazado hacia atrás)
 
@@ -131,6 +176,7 @@ Cada caso de uso justifica su existencia en un objetivo y queda cubierto por al 
 | Versión | Fecha      | Autor             | Descripción                         |
 |---------|------------|-------------------|-------------------------------------|
 | 0.1.0   | 2026-06-03 | Equipo Enterprise | Matriz inicial consolidando Fase 1. |
+| 0.2.0   | 2026-07-13 | Equipo Enterprise | Se incorporan los identificadores **PR-090 a PR-102** (capa E2E, Playwright — `Testing.md` v1.2.0). Nueva sección 2.1 con la matriz de cobertura E2E, el mapeo a objetivos estratégicos y el registro explícito de las brechas de cobertura (OE-008, OE-010, OE-011, OE-012). |
 
 **Aprobación requerida (cierre de Fase 1 — Análisis):**
 
