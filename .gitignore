@@ -34,3 +34,9 @@ logs/
 TestResults/
 coverage-report/
 coverage-results/
+/test-results/
+
+# Carpeta de pruebas suelta en la raiz (los proyectos reales viven en
+# backend/tests/ y frontend/e2e/); evita que un archivo mal ubicado ahi
+# vuelva a colarse al repo.
+/tests/
