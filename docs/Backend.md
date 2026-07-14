@@ -516,3 +516,21 @@ Recomendado para construir incrementalmente respetando dependencias:
 ---
 
 *Documento generado bajo la metodología SDD — Plataforma Inteligente de Intercambio de Objetos — Ayacucho, Perú.*
+
+<!--
+  Configuración de markdownlint para este documento.
+  Se desactivan las reglas que chocan con el estilo de documentación del
+  proyecto (compartido por todos los .md de docs/), no defectos de contenido:
+    MD013 line-length        — tablas y changelog largos por diseño.
+    MD022 blanks-around-headings — patrón de título + subtítulo del encabezado.
+    MD025 single-title       — doble '#' (título del doc + nombre del sistema).
+    MD040 fenced-code-language — diagramas ASCII en bloques de código.
+    MD060 table-column-style  — pipes de tabla sin alinear.
+-->
+<!-- markdownlint-configure-file {
+  "MD013": false,
+  "MD022": false,
+  "MD025": false,
+  "MD040": false,
+  "MD060": false
+} -->

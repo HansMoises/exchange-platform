@@ -303,3 +303,15 @@ Para el MVP se detallan a fondo los casos núcleo (registro, autenticación, pub
 | QA (C)                     | Confirma que flujos/excepciones son testeables | Pendiente |
 
 > **Regla SDD:** Con la aprobación de este documento se cierra el bloque de Análisis (Pasos 1–4). No se avanza a la Fase 2 (Diseño) / PASO 5 (`UML.md`) hasta su aprobación formal y la de `HistoriasUsuario.md` y `MatrizTrazabilidad.md`.
+
+<!--
+  Configuración de markdownlint para este documento.
+  Se desactivan las reglas que chocan con el estilo de documentación del
+  proyecto (compartido por todos los .md de docs/), no defectos de contenido:
+    MD013 line-length          — tablas y flujos de caso de uso largos por diseño.
+    MD032 blanks-around-lists  — listas compactas dentro de cada caso de uso.
+-->
+<!-- markdownlint-configure-file {
+  "MD013": false,
+  "MD032": false
+} -->
