@@ -41,18 +41,18 @@
 
 Este documento guía la implementación del backend según el diseño aprobado. No redefine la arquitectura ni la BD; explica **cómo** construirlas en .NET.
 
-| Componente        | Tecnología                               |
-|-------------------|------------------------------------------|
-| Framework         | .NET 10 · ASP.NET Core Web API           |
+| Componente        | Tecnología                                  |
+|-------------------|---------------------------------------------|
+| Framework         | .NET 10 · ASP.NET Core Web API              |
 | ORM               | Entity Framework Core (Code First) + Npgsql |
-| Base de datos     | PostgreSQL 15+ (Supabase, gestionado)    |
-| CQRS / Mediación  | MediatR                                  |
-| Mapeo             | AutoMapper                               |
-| Validación        | FluentValidation                         |
-| Logging           | Serilog                                  |
-| Documentación API | Swagger / OpenAPI                        |
-| Autenticación     | JWT + Refresh Tokens                     |
-| Pruebas           | xUnit · Moq · FluentAssertions           |
+| Base de datos     | PostgreSQL 15+ (Supabase, gestionado)       |
+| CQRS / Mediación  | MediatR                                     |
+| Mapeo             | AutoMapper                                  |
+| Validación        | FluentValidation                            |
+| Logging           | Serilog                                     |
+| Documentación API | Swagger / OpenAPI                           |
+| Autenticación     | JWT + Refresh Tokens                        |
+| Pruebas           | xUnit · Moq · FluentAssertions              |
 
 ---
 
@@ -398,7 +398,7 @@ public class ExceptionHandlingMiddleware { /* ... */ }
 ## 7. Configuración Transversal
 
 | Aspecto                   | Implementación (en Program.cs / extensiones)                        |
-|---------------------------|---------------------------------------------------------------------|
+|---------------------------------------|-----------------------------------------------------------------------------------|
 | Inyección de dependencias | Registro de DbContext, UoW, repositorios, servicios, MediatR.       |
 | MediatR + Behaviors       | Registro de handlers y pipeline (Validation, Logging, Audit).       |
 | EF Core                   | Connection string desde variable de entorno; migraciones.           |
