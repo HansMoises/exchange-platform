@@ -3,9 +3,9 @@
 
 > **Documento:** Arquitectura del Sistema
 > **Paso SDD:** 6 de 8 (Arquitectura) — **Fase SDLC:** 2 (Diseño)
-> **Versión:** 1.4.0
+> **Versión:** 1.5.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-07-13
+> **Fecha:** 2026-07-14
 > **Autor:** Equipo Enterprise Senior (Arquitecto de Software / Soluciones / Empresarial / Datos / Seguridad / DevOps)
 > **Documentos padre:** VisionProyecto.md | Requisitos.md | ReglasNegocio.md | CasosDeUso.md | HistoriasUsuario.md | MatrizTrazabilidad.md | UML.md
 > **Convenciones:** Documentación en español; código/entidades en español (Usuario, Objeto, Intercambio). Diagramas en ASCII. Decisiones registradas como ADR.
@@ -21,6 +21,7 @@
 | 1.2.0   | 2026-07-08 | Equipo Enterprise Senior | Migración de motor de BD: SQL Server 2022 (contenedor propio) → PostgreSQL 15+ en Supabase (gestionado externo). Ver ADR-010. Diagramas C4, flujo CQRS, despliegue y escalabilidad actualizados. ADR-002 marcado como Reemplazado. |
 | 1.3.0   | 2026-07-09 | Equipo Enterprise Senior | Despliegue de frontend y backend movido de VPS Hostinger (Docker Compose + Nginx proxy) a **Vercel (frontend) + Render (backend)**, plan gratuito. Ver ADR-011. Diagrama de flujo general, sección 8 (Arquitectura de Despliegue), escalabilidad y trazabilidad actualizados. ADR-009 marcado como Vigente (parcial) — Docker Compose se conserva solo para desarrollo local. |
 | 1.4.0   | 2026-07-13 | Equipo Enterprise Senior | Se añade **ADR-012 — Aislamiento de bases de datos en tres niveles** (Producción/Supabase · Desarrollo/Docker `:5432` · Test/Docker `:5433`), motivado por la implementación de la suite E2E (Playwright, ver `Testing.md` v1.2.0). Modifica parcialmente **ADR-009** y **ADR-010**: el principio *"la BD corre en Supabase, fuera de Docker"* deja de ser cierto para los ambientes de Desarrollo y Test. ADR-010 marcado como *Modificado parcialmente*. Obliga a cascada sobre `Docker.md`, `Deployment.md`, `CICD.md`, `Testing.md`, `Riesgos.md` y `README.md`. |
+| 1.5.0   | 2026-07-14 | Equipo Enterprise Senior | Se añade **ADR-013 — Almacenamiento de imágenes en Supabase Storage**, en reemplazo del almacenamiento en disco local, que se perdía en el filesystem efímero de Render (ADR-011). Nueva implementación `AlmacenamientoSupabaseService` tras `IAlmacenamientoService`; el disco local queda solo para Desarrollo/Test. Corrige la descripción «genérico/local» del almacenamiento y la nomenclatura `FileStorageService` → `IAlmacenamientoService` (diagrama de componentes, árbol de carpetas, escalabilidad y trazabilidad). Obliga a cascada sobre `Backend.md`, `Deployment.md`, `BD.md` y `README.md`. |
 
 ---
 
@@ -222,7 +223,7 @@ Muestra cómo el sistema interactúa con usuarios y sistemas externos.
 │  │               IntercambioRepository │ CalificacionRepository │   │
 │  │                NotificacionRepository                        │   │
 │  │  UnitOfWork: envuelve DbContext.SaveChangesAsync()           │   │
-│  │  Services: JwtService │ PasswordHasher │ FileStorageService  │   │
+│  │  Services: JwtService │ PasswordHasher │ AlmacenamientoService│   │
 │  │            NotificationService │ AuditService                │   │
 │  │  Serilog (logging estructurado)                              │   │
 │  │  EF Core Migrations                                          │   │
@@ -350,7 +351,8 @@ Se materializa en la implementación (Fase 3), gobernada por `Convenciones.md`. 
   │     │     ├── JwtService.cs
   │     │     └── PasswordHasher.cs
   │     ├── Services/
-  │     │     ├── FileStorageService.cs
+  │     │     ├── AlmacenamientoLocalService.cs      (IAlmacenamientoService — Dev/Test)
+  │     │     ├── AlmacenamientoSupabaseService.cs   (IAlmacenamientoService — Staging/Prod, ADR-013)
   │     │     ├── NotificationService.cs
   │     │     └── AuditService.cs
   │     └── Logging/
@@ -915,7 +917,7 @@ VITE_API_URL=https://<proyecto>.onrender.com/api/v1
 
 ### 8.5 Cloud Readiness
 
-Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra PaaS o por un VPS con Docker (Azure/AWS/GCP) sin cambios de código, ya que la configuración vive en variables de entorno (RNF-022, ADR-008, ADR-011). La base de datos ya es cloud-native al vivir en Supabase (PostgreSQL gestionado, con backups, pooling y escalado propios, ADR-010). `FileStorageService` tras interfaz facilita migración a Azure Blob / S3.
+Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra PaaS o por un VPS con Docker (Azure/AWS/GCP) sin cambios de código, ya que la configuración vive en variables de entorno (RNF-022, ADR-008, ADR-011). La base de datos ya es cloud-native al vivir en Supabase (PostgreSQL gestionado, con backups, pooling y escalado propios, ADR-010). Las imágenes se almacenan en **Supabase Storage** en Staging/Producción (ADR-013); la interfaz `IAlmacenamientoService` mantiene la portabilidad hacia Azure Blob / S3 sin cambios en el resto del código.
 
 ---
 
@@ -1130,6 +1132,31 @@ Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra P
 
 ---
 
+### ADR-013 — Almacenamiento de imágenes en Supabase Storage (reemplaza el almacenamiento en disco local)
+
+| Campo         | Detalle                                                                                                                                                                                                                                                                                             |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Estado        | Aprobado                                                                                                                                                                                                                                                                                            |
+| Fecha         | 2026-07-14                                                                                                                                                                                                                                                                                          |
+| Contexto      | La arquitectura describía el almacenamiento de imágenes como un servicio genérico tras interfaz (`FileStorageService` en este documento y en `Backend.md`), con «fácil migración a Azure Blob / S3». La única implementación real (`AlmacenamientoLocalService`) escribe los archivos en `wwwroot/uploads` del propio backend y devuelve una URL servida como archivo estático. ADR-011 movió el backend a Render (contenedor Docker en plan gratuito). |
+| Problema      | El filesystem del contenedor de Render es **efímero**: se vacía en cada deploy y en cada reinicio, y el plan Free suspende el servicio tras ~15 min de inactividad (ver `Deployment.md` §7). Las imágenes que subían los usuarios desaparecían minutos después — la BD conservaba la URL en `ImagenesObjeto.url`, pero el archivo físico daba **404** (imágenes rotas en producción). Adicionalmente, la URL se componía con `BackendUrl` (fallback `https://localhost:7149`), quedando rota si esa variable no se definía en Render. |
+| Alternativas  | (1) Mantener disco local en Render — **descartada:** el filesystem efímero es la causa raíz. (2) Persistent Disk de Render — **descartada:** no está disponible en el plan Free y ataría el almacenamiento a una única instancia. (3) Azure Blob Storage / AWS S3 — viables y ya contempladas por la interfaz, pero **descartadas para el MVP** por introducir un proveedor y credenciales nuevos. (4) **Supabase Storage** — **adoptada:** reutiliza el proyecto Supabase ya existente (ADR-010), ofrece 1 GB en el plan Free, CDN y URL pública estable. |
+| Decisión      | Introducir **`AlmacenamientoSupabaseService`** (implementación de `IAlmacenamientoService`) que sube el archivo a un **bucket público de Supabase Storage** vía su API REST y devuelve la URL pública del CDN (`…/storage/v1/object/public/<bucket>/<archivo>`). Se activa en **Staging/Producción** cuando `Supabase__Url` y `Supabase__ServiceKey` están definidas; en su ausencia (**Desarrollo/Test**) se conserva `AlmacenamientoLocalService` (disco). La selección se resuelve en `Program.cs` por presencia de variables de entorno, coherente con el principio de configuración por entorno de ADR-011/ADR-012. |
+| Consecuencias | (+) Las imágenes sobreviven a deploys y reinicios; (+) servidas por CDN con URL estable; (+) sin proveedor nuevo — reutiliza Supabase (ADR-010); (+) paridad de entornos: disco local en Dev/Test, almacenamiento gestionado en Prod. (-) Requiere crear el bucket y definir dos variables de entorno en Render antes de que las imágenes funcionen; (-) la `service_role` key es una credencial sensible (vive **solo** en el backend, nunca en el frontend); (-) las imágenes subidas **antes** de este cambio ya se perdieron y no son recuperables; (-) **corrige la descripción «genérico/local» de este documento y de `Backend.md`** y una discrepancia de nomenclatura (ver nota) — obliga a actualizar `Arquitectura.md` (diagrama de componentes, árbol de carpetas, escalabilidad, trazabilidad), `Backend.md`, `Deployment.md`, `BD.md` y `README.md` en cascada (cumplido en esta versión). |
+
+#### Configuración por ambiente
+
+| Variable                | Dev / Test        | Staging / Producción (Render)                     |
+|-------------------------|-------------------|---------------------------------------------------|
+| `Supabase__Url`         | *(sin definir)*   | `https://<ref>.supabase.co`                       |
+| `Supabase__ServiceKey`  | *(sin definir)*   | `service_role` key del proyecto (Settings → API)  |
+| `Supabase__Bucket`      | *(sin definir)*   | `uploads` (por defecto si se omite)               |
+| Implementación activa   | `AlmacenamientoLocalService` (disco `wwwroot/uploads`) | `AlmacenamientoSupabaseService` (bucket público + CDN) |
+
+> **Nota de nomenclatura.** Los documentos de arquitectura llamaban a este componente `FileStorageService`. El nombre real, conforme a la convención de código en español, es **`IAlmacenamientoService`** con las implementaciones `AlmacenamientoLocalService` y `AlmacenamientoSupabaseService`. La cascada de esta versión corrige la referencia en todos los `.md`.
+
+---
+
 ## 12. Principios de Diseño Aplicados
 
 | Principio                  | Aplicación en el Proyecto                                                            |
@@ -1179,7 +1206,7 @@ Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra P
 | Base de datos geográfica | UBIGEO completo del Perú desde V1. Sin cambios de esquema al escalar. |
 | Paginación               | Obligatoria en todos los endpoints de lista. Sin cargas completas.    |
 | Índices                  | Definidos en BD.md para columnas de búsqueda y filtrado frecuentes.   |
-| Imágenes                 | FileStorageService con interfaz — fácil migración a Azure Blob / S3.  |
+| Imágenes                 | `IAlmacenamientoService` con dos implementaciones: disco local (Dev/Test) y **Supabase Storage** con CDN (Staging/Prod, ADR-013). La interfaz permite migrar a Azure Blob / S3 sin tocar el resto del código. |
 | Configuración            | Variables de entorno — sin cambios de código al migrar ambientes.     |
 | Contenedores             | Backend empaquetado en Docker (Dockerfile) — portable entre Render y cualquier otro host Docker (Azure/AWS/GCP/VPS) sin cambios. Docker Compose se mantiene para desarrollo local. |
 | Módulos desacoplados     | Features independientes en Frontend. Bounded contexts en Backend.     |
@@ -1197,6 +1224,7 @@ Frontend y backend son portables: Vercel y Render pueden reemplazarse por otra P
 | Seguridad             | RNF-001..005, ADR-004    | Seguridad.md             |
 | Integración           | API REST, MediatR        | API.md                   |
 | Despliegue            | RNF-022, ADR-009, ADR-011 | Docker.md, Deployment.md |
+| Almacenamiento de imágenes | ADR-013              | Deployment.md, Backend.md, BD.md |
 | C4 / componentes      | Requisitos + UML         | UML.md                   |
 
 ### 15.2 Aprobación

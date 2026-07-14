@@ -3,9 +3,9 @@
 
 > **Documento:** Guía de Implementación del Backend
 > **Fase SDLC:** 3 (Desarrollo / Implementación)
-> **Versión:** 1.1.0
+> **Versión:** 1.2.0
 > **Estado:** `PENDIENTE DE APROBACIÓN`
-> **Fecha:** 2026-07-08
+> **Fecha:** 2026-07-14
 > **Autor:** Equipo Enterprise Senior (Backend Developer Senior / Arquitecto / Esp. EF Core)
 > **Documentos padre:** Arquitectura.md | BD.md | API.md | Seguridad.md | Convenciones.md | UML.md
 > **Convenciones:** Documentación y código en español. Diagramas en ASCII. Stack: .NET 10.
@@ -18,6 +18,7 @@
 |---------|------------|--------------------------|------------------|
 | 1.0.0   | 2026-06-03 | Equipo Enterprise Senior | Versión inicial. |
 | 1.1.0   | 2026-07-08 | Equipo Enterprise Senior | BD migrada de SQL Server a PostgreSQL/Supabase (proveedor Npgsql). Ver ADR-010 en Arquitectura.md. |
+| 1.2.0   | 2026-07-14 | Equipo Enterprise Senior | Nueva §5.4 — almacenamiento de imágenes tras `IAlmacenamientoService` con dos implementaciones (`AlmacenamientoLocalService` para Dev/Test, `AlmacenamientoSupabaseService` para Staging/Prod). Corrige la referencia genérica al almacenamiento. Ver ADR-013 en Arquitectura.md. |
 
 ---
 
@@ -288,7 +289,7 @@ public class ValidationBehavior<TRequest, TResponse>
 
 ## 5. Capa Infrastructure
 
-EF Core (DbContext, configuraciones, migraciones), implementación de repositorios y Unit Of Work, y servicios (JWT, hashing, almacenamiento, notificaciones, auditoría).
+EF Core (DbContext, configuraciones, migraciones), implementación de repositorios y Unit Of Work, y servicios (JWT, hashing, almacenamiento de imágenes tras `IAlmacenamientoService` — §5.4, ADR-013, notificaciones, auditoría).
 
 ### 5.1 DbContext con Soft Delete global
 
@@ -350,6 +351,32 @@ public class UnitOfWork : IUnitOfWork
         => _context.SaveChangesAsync(ct);
 }
 ```
+
+### 5.4 Almacenamiento de imágenes (`IAlmacenamientoService`, ADR-013)
+
+La subida de imágenes (objetos y foto de perfil) se abstrae tras la interfaz
+`IAlmacenamientoService` (`Domain`), con dos implementaciones seleccionadas por
+ambiente en `Program.cs`:
+
+| Implementación                 | Ambiente            | Comportamiento                                                                 |
+|--------------------------------|---------------------|-------------------------------------------------------------------------------|
+| `AlmacenamientoLocalService`   | Desarrollo / Test   | Guarda en `wwwroot/uploads` y sirve el archivo como estático (`UseStaticFiles`). |
+| `AlmacenamientoSupabaseService`| Staging / Producción| Sube a un bucket público de **Supabase Storage** (API REST) y devuelve la URL pública del CDN. |
+
+```csharp
+public interface IAlmacenamientoService
+{
+    // Devuelve la URL pública del archivo guardado.
+    Task<string> GuardarAsync(Stream contenido, string extension, CancellationToken ct = default);
+}
+```
+
+> **Por qué Supabase Storage en producción (ADR-013).** El filesystem del
+> contenedor de Render es efímero: todo lo escrito en `wwwroot/uploads` se pierde
+> en cada deploy o reinicio, dejando las imágenes en 404. `AlmacenamientoSupabaseService`
+> se activa cuando `Supabase__Url` y `Supabase__ServiceKey` están definidas; sin
+> ellas se usa el disco local. La `service_role` key vive **solo** en el backend.
+> La URL resultante se persiste en `ImagenesObjeto.url` (ver `BD.md`).
 
 ---
 

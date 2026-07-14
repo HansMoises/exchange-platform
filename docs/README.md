@@ -154,6 +154,7 @@ Para desarrollo sin Docker, consultar [`docs/Backend.md`](docs/Backend.md) y [`d
 | Frontend | [Vercel](https://vercel.com/) | Build automático (`npm run build`) en cada push a `main`/`develop`. |
 | Backend  | [Render](https://render.com/) | Deploy automático desde el Dockerfile de `backend/` en cada push. |
 | Base de datos | [Supabase](https://supabase.com/) | PostgreSQL gestionado (sin cambios — ADR-010). |
+| Imágenes | [Supabase Storage](https://supabase.com/) | Bucket público (`uploads`) servido por CDN en Staging/Prod (ADR-013). En desarrollo local se usa disco (`wwwroot/uploads`). |
 
 Procedimiento completo, variables de entorno por ambiente y rollback en [`docs/Deployment.md`](docs/Deployment.md).
 

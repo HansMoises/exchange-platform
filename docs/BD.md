@@ -3,7 +3,7 @@
 
 > **Documento:** Diseño de Base de Datos
 > **Paso SDD:** 7 de 8 (Base de Datos) — **Fase SDLC:** 2 (Diseño)
-> **Versión:** 1.2.1
+> **Versión:** 1.2.2
 > **Estado:** `PENDIENTE DE APROBACIÓN`
 > **Fecha:** 2026-07-08
 > **Autor:** Equipo Enterprise Senior (Arquitecto de Datos / DBA PostgreSQL / Supabase)
@@ -21,6 +21,7 @@
 | 1.1.0   | 2026-06-03 | Equipo Enterprise Senior | Modelo conceptual ER en ASCII y matriz de trazabilidad BD→RN/RNF.    |
 | 1.2.0   | 2026-07-08 | Equipo Enterprise Senior | Migración de motor: SQL Server 2022 → PostgreSQL 15+ (Supabase). DDL, tipos de datos, seed y estrategia de backup adaptados. Ver ADR-010 en `Arquitectura.md`. |
 | 1.2.1   | 2026-07-08 | Equipo Enterprise Senior | Corrección post-revisión: paginación documentada como LIMIT/OFFSET (no OFFSET/FETCH, sintaxis T-SQL); aclarada la semántica de `gen_random_uuid()` (UUID aleatorio, no secuencial como `NEWSEQUENTIALID()` — ya no se afirma que reduce fragmentación de índices). |
+| 1.2.2   | 2026-07-14 | Equipo Enterprise Senior | Aclarado el origen de `ImagenesObjeto.url`: CDN de Supabase Storage en Staging/Prod, disco local en Dev/Test. Ver ADR-013 en `Arquitectura.md`. |
 
 ---
 
@@ -465,7 +466,7 @@ CREATE TABLE ImagenesObjeto (
 |-----------|------------------|------|--------------------------------------------------|
 | id        | UUID | NO   | PK.                                              |
 | objeto_id | UUID | NO   | FK -> Objetos.id.                                |
-| url       | VARCHAR(500)    | NO   | URL de almacenamiento de la imagen.              |
+| url       | VARCHAR(500)    | NO   | URL pública de la imagen. En Staging/Prod apunta al CDN de Supabase Storage; en Dev/Test, al disco local del backend (ADR-013). |
 | orden     | INT              | NO   | Posición de la imagen (1-5). Imagen 1 = portada. |
 | tamano_kb | INT              | NO   | Tamaño del archivo en KB. Máx. 5120 KB (5MB).    |
 
